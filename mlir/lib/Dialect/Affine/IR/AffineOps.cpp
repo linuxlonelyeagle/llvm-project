@@ -17,7 +17,6 @@
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/Interfaces/FunctionInterfaces.h"
 #include "mlir/Interfaces/ShapedOpInterfaces.h"
 #include "mlir/Interfaces/ValueBoundsOpInterface.h"
 #include "mlir/Transforms/InliningUtils.h"
@@ -353,13 +352,8 @@ static bool isDimOpValidSymbol(ShapedDimOpInterface dimOp, Region *region) {
 
   // Conservatively handle remaining BlockArguments as non-valid symbols.
   // E.g. scf.for iterArgs.
-  if (auto blockArgument =
-          llvm::dyn_cast<BlockArgument>(dimOp.getShapedValue())) {
-    if (!llvm::isa<FunctionOpInterface>(
-            blockArgument.getParentRegion()->getParentOp())) {
-      return false;
-    }
-  }
+  if (llvm::isa<BlockArgument>(dimOp.getShapedValue()))
+    return false;
 
   // The dim op is also okay if its operand memref is a view/subview whose
   // corresponding size is a valid symbol.
@@ -371,11 +365,6 @@ static bool isDimOpValidSymbol(ShapedDimOpInterface dimOp, Region *region) {
 
   // Skip over all memref.cast ops (if any).
   Operation *op = dimOp.getShapedValue().getDefiningOp();
-
-  // the ShapedValue of the dim is the function block argument.
-  if (!op)
-    return true;
-
   while (auto castOp = dyn_cast<memref::CastOp>(op)) {
     // Bail on unranked memrefs.
     if (isa<UnrankedMemRefType>(castOp.getSource().getType()))
