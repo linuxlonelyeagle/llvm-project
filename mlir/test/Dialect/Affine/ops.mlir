@@ -269,6 +269,30 @@ func.func @affine_for_multiple_yield(%buffer: memref<1024xf32>) -> (f32, f32) {
 
 // -----
 
+#map = affine_map<()[s0] -> (s0)>
+
+// CHECK-LABEL:   func.func @affine_function_argument(
+
+func.func @affine_function_argument(%A : memref<32x128xf32>) {
+  %0 = arith.constant 0 : index
+  %1 = arith.constant 1 : index
+  %dim_0 = memref.dim %A, %0 : memref<32x128xf32>
+  %dim_1 = memref.dim %A, %1 : memref<32x128xf32>
+  affine.for %it = #map()[%dim_0] to #map()[%dim_1] {
+
+  }
+  return
+}
+
+// CHECK-SAME:      %[[VAL_0:.*]]: memref<32x128xf32>) {
+// CHECK:           %[[VAL_1:.*]] = arith.constant 0 : index
+// CHECK:           %[[VAL_2:.*]] = arith.constant 1 : index
+// CHECK:           %[[VAL_3:.*]] = memref.dim %[[VAL_0]], %[[VAL_1]] : memref<32x128xf32>
+// CHECK:           %[[VAL_4:.*]] = memref.dim %[[VAL_0]], %[[VAL_2]] : memref<32x128xf32>
+// CHECK:           affine.for %[[VAL_5:.*]] = %[[VAL_3]] to %[[VAL_4]] {
+
+// -----
+
 // CHECK-LABEL: func @delinearize
 func.func @delinearize(%linear_idx: index, %basis0: index, %basis1 :index) -> (index, index) {
   // CHECK: affine.delinearize_index %{{.+}} into (%{{.+}}, %{{.+}}) : index, index
