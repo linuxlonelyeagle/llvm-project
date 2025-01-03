@@ -1035,6 +1035,9 @@ def GPU_LaunchOp : GPU_Op<"launch", [
     static StringRef getNumWorkgroupAttributionsAttrName() {
       return "workgroup_attributions";
     }
+    
+    Value getBlockSizeOnAxis(Value threadId);
+    Value getBlockSizeOnAxis(Dimension dimension);
   }];
 
   let hasCanonicalizer = 1;

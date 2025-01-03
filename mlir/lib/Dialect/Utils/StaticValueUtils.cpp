@@ -9,6 +9,9 @@
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
+
 #include "llvm/ADT/APSInt.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/MathExtras.h"
@@ -201,6 +204,31 @@ SmallVector<OpFoldResult> getMixedValues(ArrayRef<int64_t> staticValues,
     res.push_back(ShapedType::isDynamic(value)
                       ? OpFoldResult{dynamicValues[numDynamic++]}
                       : OpFoldResult{b.getI64IntegerAttr(staticValues[idx])});
+  }
+  return res;
+}
+
+SmallVector<OpFoldResult> getMixedValues(ArrayRef<int64_t> staticValues,
+                                         ValueRange AdaptorDynamicValues, ValueRange dynamicValues, Builder &b) {
+
+  SmallVector<OpFoldResult> res;
+  res.reserve(staticValues.size());
+  unsigned numDynamic = 0;
+  unsigned count = static_cast<unsigned>(staticValues.size());
+  for (unsigned idx = 0; idx < count; ++idx) {
+    int64_t value = staticValues[idx];
+    if (ShapedType::isDynamic(value)) {
+      auto defOp = dynamicValues[numDynamic].getDefiningOp();
+      if (defOp && llvm::isa<arith::ConstantOp, LLVM::ConstantOp>(defOp)) {
+        Attribute value = defOp->getAttr(arith::ConstantOp::getAttributeNames()[0]);
+        res.push_back(OpFoldResult{b.getI64IntegerAttr(cast<IntegerAttr>(value).getInt())});
+      } else {
+        res.push_back(OpFoldResult{AdaptorDynamicValues[numDynamic]});
+      }
+      numDynamic++;
+    } else {
+      res.push_back(OpFoldResult{b.getI64IntegerAttr(staticValues[idx])});
+    }
   }
   return res;
 }

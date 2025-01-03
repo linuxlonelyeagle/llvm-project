@@ -1094,7 +1094,7 @@ public:
       return failure();
 
     SmallVector<OpFoldResult> positionVec = getMixedValues(
-        adaptor.getStaticPosition(), adaptor.getDynamicPosition(), rewriter);
+        adaptor.getStaticPosition(), adaptor.getDynamicPosition(), extractOp.getDynamicPosition(), rewriter);
 
     // The Vector -> LLVM lowering models N-D vectors as nested aggregates of
     // 1-d vectors. This nesting is modeled using arrays. We do this conversion
