@@ -18,6 +18,7 @@
 #include "mlir/Dialect/Affine/Analysis/NestedMatcher.h"
 #include "mlir/Dialect/Affine/IR/AffineOps.h"
 #include "mlir/Dialect/Affine/IR/AffineValueMap.h"
+#include "mlir/Dialect/GPU/IR/GPUDialect.h"
 #include "llvm/Support/MathExtras.h"
 
 #include "llvm/ADT/DenseSet.h"
@@ -95,6 +96,28 @@ std::optional<uint64_t> mlir::affine::getConstantTripCount(AffineForOp forOp) {
 
   if (!map)
     return std::nullopt;
+
+  if (auto launchOp = forOp->getParentOfType<gpu::LaunchOp>()) {
+    SmallVector<Value> newOperands;
+    for (Value operand : operands) {
+      if (operand.getDefiningOp() &&
+          mlir::isa<gpu::ThreadIdOp>(operand.getDefiningOp())) {
+        auto threadId = mlir::cast<gpu::ThreadIdOp>(operand.getDefiningOp());
+        gpu::Dimension dimension = threadId.getDimension();
+        newOperands.push_back(launchOp.getBlockSizeOnAxis(dimension));
+      } else if (Value blockSize = launchOp.getBlockSizeOnAxis(operand)) {
+        newOperands.push_back(blockSize);
+      } else {
+        newOperands.push_back(operand);
+      }
+    }
+    LLVM_DEBUG(llvm::dbgs() << forOp << "\n");
+    LLVM_DEBUG(llvm::dbgs() << "map: " << map << "\n");
+    affine::AffineValueMap valueMap(map, newOperands);
+    std::ignore = valueMap.canonicalize();
+    map = valueMap.getAffineMap();
+    LLVM_DEBUG(llvm::dbgs() << "new map: " << map << "\n");
+  }
 
   // Take the min if all trip counts are constant.
   std::optional<uint64_t> tripCount;
