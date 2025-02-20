@@ -258,6 +258,45 @@ gpu.module @unroll_full {
   }
 }
 
+// UNROLL-FULL-LABEL: func @thread_partial_execution
+func.func @thread_partial_execution() {
+  %0 = arith.constant 0 :index
+  %1 = arith.constant 2 : index    
+  // UNROLL-FULL: %[[C0:.*]] = arith.constant 0 : index
+  // UNROLL-FULL: %[[VAL_1:.*]] = arith.constant 2 : index
+  gpu.launch blocks(%bx, %by, %bz) in (%sz_bx = %1, %sz_by = %1, %sz_bz = %1)
+             threads(%tx, %ty, %tz) in (%sz_tx = %1, %sz_ty = %1, %sz_tz = %1) {
+    affine.for %arg = %tx to 3 step 2 iter_args(%sum_iter = %0) -> index {
+      %3 = arith.addi %arg, %0 : index
+      affine.yield %3 : index
+    }
+    // UNROLL-FULL: %{{.*}} = affine.for %[[IV:.*]] = %{{.*}} to 3 step 2 iter_args(%{{.*}} = %[[C0]]) -> (index) {
+    // UNROLL-FULL:   %[[SUM:.*]] = arith.addi %[[IV]], %[[C0]] : index
+    // UNROLL-FULL:   affine.yield %[[SUM]] : index
+    // UNROLL-FULL: }
+    gpu.terminator
+  }
+  return
+}
+
+// UNROLL-FULL-LABEL: func @invalid_loop
+func.func @invalid_loop() {
+  %0 = arith.constant 0 :index
+  %1 = arith.constant 2 : index
+  gpu.launch blocks(%bx, %by, %bz) in (%sz_bx = %1, %sz_by = %1, %sz_bz = %1)
+             threads(%tx, %ty, %tz) in (%sz_tx = %1, %sz_ty = %1, %sz_tz = %1) {
+    %thread_id = gpu.thread_id x
+    affine.for %arg = %tx to 0 step 2 iter_args(%sum_iter = %0) -> index {
+      %3 = arith.addi %arg, %0 : index
+      affine.yield %3 : index
+    }
+    gpu.terminator
+    // CHECK: %{{.*}} = gpu.thread_id  x
+    // CHECK: gpu.terminator
+  }
+  return
+}
+
 // SHORT-LABEL: func @loop_nest_outer_unroll() {
 func.func @loop_nest_outer_unroll() {
   // SHORT:      affine.for %arg0 = 0 to 4 {
