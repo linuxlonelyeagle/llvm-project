@@ -1077,9 +1077,14 @@ struct NVGPUGenerateWarpgroupDescriptorLowering
       return LLVM::OrOp::create(b, ti64, desc, shiftLeft(val, startBit));
     };
 
-    int64_t sizeN = op.getTensorMap().getType().getTensor().getDimSize(0);
-    uint64_t strideDimVal = (layout << 3) >> exclude4LSB;
-    uint64_t leadDimVal = (sizeN * layout) >> exclude4LSB;
+    uint64_t elemBytes =
+        op.getTensorMap().getType().getTensor().getElementTypeBitWidth() / 8;
+    // core matrix row, 128 bits.
+    uint64_t leadDimVal = 16 / elemBytes;
+    uint64_t swizzleBytes = getSwizzleBytes(swizzleKind);
+    uint64_t strideDimVal =
+        swizzleBytes == 0 ? leadDimVal : swizzleBytes / elemBytes;
+
     uint64_t offsetVal = 0;
 
     Value strideDim = makeConst(strideDimVal);
@@ -1365,7 +1370,8 @@ struct NVGPUWarpgroupMmaOpLowering
       Type elemA = matrixTypeA.getElementType();
       int byte = elemA.getIntOrFloatBitWidth() / 8;
       int tileShapeA = matrixTypeA.getDimSize(1);
-      int incrementVal = ((wgmmaK * k) + (totalK * tileShapeA * i)) * byte;
+      int incrementVal =
+          wgmmaK * k * byte; // + (totalK * tileShapeA * i)) * byte;
       incrementVal = incrementVal >> exclude4LSB;
       LDBG() << "\t\t[m: " << i << " n: " << j << " k: " << k
              << "] [wgmma descriptors] Descriptor A + " << incrementVal
@@ -1390,7 +1396,10 @@ struct NVGPUWarpgroupMmaOpLowering
       MemRefType matrixTypeB = op.getDescriptorB().getType().getTensor();
       Type elemB = matrixTypeB.getElementType();
       int byte = elemB.getIntOrFloatBitWidth() / 8;
-      int incrementVal = matrixTypeB.getDimSize(0) * wgmmaK * k * byte;
+      int incrementVal = wgmmaK * k * byte;
+      if (adaptor.getTransposeB().value_or(false)) {
+        incrementVal = matrixTypeB.getDimSize(1) * wgmmaK * k * byte;
+      }
       incrementVal = incrementVal >> exclude4LSB;
       LDBG() << "Descriptor B + " << incrementVal;
       if (!incrementVal)

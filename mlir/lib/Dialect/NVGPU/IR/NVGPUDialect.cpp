@@ -345,13 +345,13 @@ LogicalResult LdMatrixOp::verify() {
 // NVGPU_TmaAsyncLoadOp
 //===----------------------------------------------------------------------===//
 
-unsigned getSwizzleBytes(TensorMapSwizzleKind kind) {
+unsigned getSwizzleBytes(mlir::nvgpu::TensorMapSwizzleKind kind) {
   switch (kind) {
-  case TensorMapSwizzleKind::SWIZZLE_32B:
+  case mlir::nvgpu::TensorMapSwizzleKind::SWIZZLE_32B:
     return 32;
-  case TensorMapSwizzleKind::SWIZZLE_64B:
+  case mlir::nvgpu::TensorMapSwizzleKind::SWIZZLE_64B:
     return 64;
-  case TensorMapSwizzleKind::SWIZZLE_128B:
+  case mlir::nvgpu::TensorMapSwizzleKind::SWIZZLE_128B:
     return 128;
   default:
     return 0;
@@ -496,14 +496,6 @@ LogicalResult WarpgroupGenerateDescriptorOp::verify() {
       verifyTmaDescriptorWithMemref(*this, getTensorMap().getType());
   if (error.has_value())
     return error.value();
-
-  if (getTensorMap().getType().getSwizzle() !=
-      TensorMapSwizzleKind::SWIZZLE_128B) {
-    return emitError() << "supports only "
-                       << stringifyTensorMapSwizzleKind(
-                              TensorMapSwizzleKind::SWIZZLE_128B)
-                       << " is supported for the time being";
-  }
 
   if (getTensorMap().getType().getInterleave() !=
       TensorMapInterleaveKind::INTERLEAVE_NONE) {

@@ -870,7 +870,7 @@ func.func @create_wgmma_descriptor(%tensorMap : !tensorMap) -> !nvgpu.warpgroup.
     // CHECK: %[[Sre:.+]] = memref.reinterpret_cast %[[S0]] to offset: [0], sizes: [128, 64], strides: [64, 1] : memref<0xf16, 3> to memref<128x64xf16, 3>
     // CHECK: %[[S1:.+]] = builtin.unrealized_conversion_cast %[[Sre]] : memref<128x64xf16, 3> to !llvm.struct<(ptr<3>, ptr<3>, i64, array<2 x i64>, array<2 x i64>)>
     // CHECK: %[[c64:.+]] =  llvm.mlir.constant(64 : i64) : i64
-    // CHECK: %[[c1024:.+]] = llvm.mlir.constant(1024 : i64) : i64
+    // CHECK: %[[c8:.+]] = llvm.mlir.constant(8 : i64) : i64
     // CHECK: %[[S2:.+]] = llvm.extractvalue %[[S1]][1] : !llvm.struct<(ptr<3>, ptr<3>, i64, array<2 x i64>, array<2 x i64>)>
     // CHECK: %[[S3:.+]] = llvm.ptrtoint %[[S2]] : !llvm.ptr<3> to i64
     // CHECK: %[[S4:.+]] = llvm.mlir.constant(46 : i64) : i64
@@ -890,7 +890,7 @@ func.func @create_wgmma_descriptor(%tensorMap : !tensorMap) -> !nvgpu.warpgroup.
     // CHECK: %[[S19:.+]] = llvm.shl %[[c64]], %[[S18]]  : i64
     // CHECK: %[[S20:.+]] = llvm.or %[[S16]], %[[S19]]  : i64
     // CHECK: %[[S22:.+]] = llvm.mlir.constant(16 : i64) : i64
-    // CHECK: %[[S23:.+]] = llvm.shl %[[c1024]], %[[S22]]  : i64
+    // CHECK: %[[S23:.+]] = llvm.shl %[[c8]], %[[S22]]  : i64
     // CHECK: %[[S24:.+]] = llvm.or %[[S20]], %[[S23]]  : i64
     // CHECK: %[[S25:.+]] = llvm.mlir.constant(0 : i64) : i64
     // CHECK: %[[S26:.+]] = llvm.shl %[[S7]], %[[S25]]  : i64
