@@ -1052,11 +1052,6 @@ struct NVGPUGenerateWarpgroupDescriptorLowering
     nvgpu::TensorMapSwizzleKind swizzleKind =
         op.getTensorMap().getType().getSwizzle();
 
-    unsigned layout =
-        (swizzleKind == nvgpu::TensorMapSwizzleKind::SWIZZLE_128B)  ? 128
-        : (swizzleKind == nvgpu::TensorMapSwizzleKind::SWIZZLE_64B) ? 64
-        : (swizzleKind == nvgpu::TensorMapSwizzleKind::SWIZZLE_32B) ? 32
-                                                                    : 1;
     unsigned swizzle =
         (swizzleKind == nvgpu::TensorMapSwizzleKind::SWIZZLE_128B)  ? 1
         : (swizzleKind == nvgpu::TensorMapSwizzleKind::SWIZZLE_64B) ? 2
@@ -1077,13 +1072,17 @@ struct NVGPUGenerateWarpgroupDescriptorLowering
       return LLVM::OrOp::create(b, ti64, desc, shiftLeft(val, startBit));
     };
 
-    uint64_t elemBytes =
-        op.getTensorMap().getType().getTensor().getElementTypeBitWidth() / 8;
-    // core matrix row, 128 bits.
-    uint64_t leadDimVal = 16 / elemBytes;
+    // A core matrix is 16 bytes (128 bits) and has 8 rows. Therefore, a core
+    // matrix totals 128 bytes, so the byte offset of the leading dimension is
+    // always 128 bytes. `leadDimVal` = 128 >> 4.
+    uint64_t leadDimVal = 8;
+
+    // https://docs.nvidia.com/cuda/parallel-thread-execution/#asynchronous-warpgroup-level-matrix-shared-memory-layout
+    // The Stride Dimension Byte Offset is the number of bytes of the Swizzle
+    // atom, shifting it right by 4 positions is exactly equal to the number of
+    // bytes of the swizzle divided by 2.
     uint64_t swizzleBytes = getSwizzleBytes(swizzleKind);
-    uint64_t strideDimVal =
-        swizzleBytes == 0 ? leadDimVal : swizzleBytes / elemBytes;
+    uint64_t strideDimVal = swizzleBytes == 0 ? leadDimVal : swizzleBytes / 2;
 
     uint64_t offsetVal = 0;
 
@@ -1368,11 +1367,14 @@ struct NVGPUWarpgroupMmaOpLowering
     Value iterateDescriptorA(Value desc, int i, int j, int k) {
       MemRefType matrixTypeA = op.getDescriptorA().getType().getTensor();
       Type elemA = matrixTypeA.getElementType();
+      ArrayRef<int64_t> shapeA = matrixTypeA.getShape();
       int byte = elemA.getIntOrFloatBitWidth() / 8;
-      int tileShapeA = matrixTypeA.getDimSize(1);
-      int incrementVal =
-          wgmmaK * k * byte; // + (totalK * tileShapeA * i)) * byte;
+      int incrementVal = (i * wgmmaM * shapeA[1] + wgmmaK * k) * byte;
       incrementVal = incrementVal >> exclude4LSB;
+      if (adaptor.getTransposeA().value_or(false)) {
+        incrementVal =
+            (matrixTypeA.getDimSize(1) * wgmmaK * k + i * wgmmaM) * byte;
+      }
       LDBG() << "\t\t[m: " << i << " n: " << j << " k: " << k
              << "] [wgmma descriptors] Descriptor A + " << incrementVal
              << " | \t ";
@@ -1395,10 +1397,12 @@ struct NVGPUWarpgroupMmaOpLowering
     Value iterateDescriptorB(Value desc, int i, int j, int k) {
       MemRefType matrixTypeB = op.getDescriptorB().getType().getTensor();
       Type elemB = matrixTypeB.getElementType();
+      ArrayRef<int64_t> shapeB = matrixTypeB.getShape();
       int byte = elemB.getIntOrFloatBitWidth() / 8;
-      int incrementVal = wgmmaK * k * byte;
+      int incrementVal = (j * wgmmaN * shapeB[1] + wgmmaK * k) * byte;
       if (adaptor.getTransposeB().value_or(false)) {
-        incrementVal = matrixTypeB.getDimSize(1) * wgmmaK * k * byte;
+        incrementVal =
+            (matrixTypeB.getDimSize(1) * wgmmaK * k + j * wgmmaN) * byte;
       }
       incrementVal = incrementVal >> exclude4LSB;
       LDBG() << "Descriptor B + " << incrementVal;
