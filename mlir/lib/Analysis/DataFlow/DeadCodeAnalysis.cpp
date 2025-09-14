@@ -245,6 +245,7 @@ static bool isRegionOrCallableReturn(Operation *op) {
 LogicalResult DeadCodeAnalysis::initializeRecursively(Operation *op) {
   LDBG() << "[init] Entering initializeRecursively for op: "
          << OpWithFlags(op, OpPrintingFlags().skipRegions());
+  LDBG() << "[init] op->getNumSuccessors(): " << op->getNumSuccessors() << "\n";
   // Initialize the analysis by visiting every op with control-flow semantics.
   if (op->getNumRegions() || op->getNumSuccessors() ||
       isRegionOrCallableReturn(op) || isa<CallOpInterface>(op)) {

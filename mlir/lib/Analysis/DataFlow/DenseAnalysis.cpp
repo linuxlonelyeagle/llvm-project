@@ -10,6 +10,8 @@
 #include "mlir/Analysis/DataFlow/DeadCodeAnalysis.h"
 #include "mlir/Analysis/DataFlowFramework.h"
 #include "mlir/IR/Block.h"
+#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/Region.h"
@@ -105,11 +107,6 @@ void AbstractDenseForwardDataFlowAnalysis::visitCallOperation(
 LogicalResult
 AbstractDenseForwardDataFlowAnalysis::processOperation(Operation *op) {
   ProgramPoint *point = getProgramPointAfter(op);
-  // If the containing block is not executable, bail out.
-  if (op->getBlock() != nullptr &&
-      !getOrCreateFor<Executable>(point, getProgramPointBefore(op->getBlock()))
-           ->isLive())
-    return success();
 
   // Get the dense lattice to update.
   AbstractDenseLattice *after = getLattice(point);
@@ -139,8 +136,6 @@ AbstractDenseForwardDataFlowAnalysis::processOperation(Operation *op) {
 void AbstractDenseForwardDataFlowAnalysis::visitBlock(Block *block) {
   // If the block is not executable, bail out.
   ProgramPoint *point = getProgramPointBefore(block);
-  if (!getOrCreateFor<Executable>(point, point)->isLive())
-    return;
 
   // Get the dense lattice to update.
   AbstractDenseLattice *after = getLattice(point);
@@ -156,14 +151,18 @@ void AbstractDenseForwardDataFlowAnalysis::visitBlock(Block *block) {
       // If not all callsites are known, conservatively mark all lattices as
       // having reached their pessimistic fixpoints. Do the same if
       // interprocedural analysis is not enabled.
-      if (!callsites->allPredecessorsKnown() ||
-          !getSolverConfig().isInterprocedural())
+      if (!getSolverConfig().isInterprocedural())
         return setToEntryState(after);
-      for (Operation *callsite : callsites->getKnownPredecessors()) {
-        // Get the dense lattice before the callsite.
+
+      auto symbolOp = dyn_cast<SymbolOpInterface>(block->getParentOp());
+      auto users = symbolOp.getSymbolUses(
+          block->getParentOp()->getParentOfType<ModuleOp>());
+      if (!users.has_value())
+        return;
+      for (SymbolTable::SymbolUse user : *users) {
+        Operation *callsite = user.getUser();
         const AbstractDenseLattice *before;
         before = getLatticeFor(point, getProgramPointBefore(callsite));
-
         visitCallControlFlowTransfer(cast<CallOpInterface>(callsite),
                                      CallControlFlowAction::EnterCallee,
                                      *before, after);
@@ -188,7 +187,23 @@ void AbstractDenseForwardDataFlowAnalysis::visitBlock(Block *block) {
              point, getLatticeAnchor<CFGEdge>(predecessor, block))
              ->isLive())
       continue;
+    Operation *preTerminator = predecessor->getTerminator();
+    auto branch = mlir::dyn_cast<BranchOpInterface>(preTerminator);
+    SmallVector<Attribute> operands;
+    SmallVector<OpFoldResult> results;
+    preTerminator->fold(results);
+    for (OpFoldResult result : results) {
+      if (Attribute attr = mlir::dyn_cast<Attribute>(result)) {
+        operands.push_back(attr);
+      }
+    }
 
+    if (!operands.empty()) {
+      if (Block *successor = branch.getSuccessorForOperands(operands)) {
+        if (successor != block)
+          continue;
+      }
+    }
     // Merge in the state from the predecessor's terminator.
     join(after, *getLatticeFor(
                     point, getProgramPointAfter(predecessor->getTerminator())));
