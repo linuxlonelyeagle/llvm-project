@@ -107,11 +107,14 @@ void AbstractDenseForwardDataFlowAnalysis::visitCallOperation(
 LogicalResult
 AbstractDenseForwardDataFlowAnalysis::processOperation(Operation *op) {
   ProgramPoint *point = getProgramPointAfter(op);
-  // If the containing block is not executable, bail out.
   if (op->getBlock() != nullptr &&
-      !getOrCreateFor<Executable>(point, getProgramPointBefore(op->getBlock()))
-           ->isLive())
-    return success();
+      lookupState<Executable>(getProgramPointBefore(op->getBlock()))) {
+    // If the containing block is not executable, bail out.
+    if (!getOrCreateFor<Executable>(point,
+                                    getProgramPointBefore(op->getBlock()))
+             ->isLive())
+      return success();
+  }
 
   // Get the dense lattice to update.
   AbstractDenseLattice *after = getLattice(point);
@@ -141,8 +144,11 @@ AbstractDenseForwardDataFlowAnalysis::processOperation(Operation *op) {
 void AbstractDenseForwardDataFlowAnalysis::visitBlock(Block *block) {
   // If the block is not executable, bail out.
   ProgramPoint *point = getProgramPointBefore(block);
-  if (!getOrCreateFor<Executable>(point, point)->isLive())
-    return;
+  if (lookupState<Executable>(point)) {
+    if (!getOrCreateFor<Executable>(point, point)->isLive()) {
+      return;
+    }
+  }
 
   // Get the dense lattice to update.
   AbstractDenseLattice *after = getLattice(point);

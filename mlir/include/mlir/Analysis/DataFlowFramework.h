@@ -698,6 +698,11 @@ protected:
   /// Return the configuration of the solver used for this analysis.
   const DataFlowConfig &getSolverConfig() const { return solver.getConfig(); }
 
+  template <typename StateT, typename AnchorT>
+  const StateT *lookupState(AnchorT anchor) const {
+    return solver.lookupState<StateT>(anchor);
+  }
+
 #if LLVM_ENABLE_ABI_BREAKING_CHECKS
   /// When compiling with debugging, keep a name for the analyis.
   StringRef debugName;
