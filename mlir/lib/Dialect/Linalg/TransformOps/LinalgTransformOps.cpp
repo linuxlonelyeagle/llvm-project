@@ -646,10 +646,10 @@ transform::FuseOp::apply(transform::TransformRewriter &rewriter,
   if (getApplyCleanup()) {
     MLIRContext *context = rewriter.getContext();
     RewritePatternSet patterns(context);
-    tensor::ExtractSliceOp::getCanonicalizationPatterns(patterns, context);
-    tensor::populateMergeConsecutiveInsertExtractSlicePatterns(patterns);
-    tensor::populateBubbleUpExtractSliceOpPatterns(patterns);
-    tileAndFuseOptions.cleanupPatterns = std::move(patterns);
+    // tensor::ExtractSliceOp::getCanonicalizationPatterns(patterns, context);
+    // tensor::populateMergeConsecutiveInsertExtractSlicePatterns(patterns);
+    // tensor::populateBubbleUpExtractSliceOpPatterns(patterns);
+    // tileAndFuseOptions.cleanupPatterns = std::move(patterns);
   }
 
   LogicalResult result = applyTilingToAll(

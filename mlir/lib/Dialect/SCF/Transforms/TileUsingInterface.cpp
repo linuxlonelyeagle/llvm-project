@@ -1330,6 +1330,56 @@ getUntiledProducerFromSliceSource(OpOperand *source,
   return {dyn_cast<OpResult>(source->get()), destinationIterArg};
 }
 
+static LoopLikeOpInterface
+getInnerLoops(MutableArrayRef<LoopLikeOpInterface> loops,
+              tensor::ExtractSliceOp candidateSliceOp) {
+  LoopLikeOpInterface sliceParentLoop =
+      candidateSliceOp->getParentOfType<LoopLikeOpInterface>();
+  if (!sliceParentLoop)
+    return {};
+
+  SmallVector<OpFoldResult> offsets = candidateSliceOp.getMixedOffsets();
+  SmallVector<LoopLikeOpInterface> extractUesLoops;
+  for (OpFoldResult offset : offsets) {
+    if (Value dynamicOffset = dyn_cast<Value>(offset)) {
+      if (!isa<BlockArgument>(dynamicOffset))
+        return {};
+
+      Block *block = cast<BlockArgument>(dynamicOffset).getOwner();
+      Operation *parentOp = block->getParentOp();
+      if (auto loop = dyn_cast<LoopLikeOpInterface>(parentOp))
+        extractUesLoops.push_back(loop);
+      else
+        return {};
+    }
+  }
+
+  for (int i = loops.size() - 1; i >= 0; --i) {
+    LoopLikeOpInterface loop = loops[i];
+    if (llvm::find(extractUesLoops, loop) != extractUesLoops.end() &&
+        loop != sliceParentLoop) {
+      return loop;
+    }
+  }
+  return {};
+}
+
+static std::optional<int> getIterArgsPos(Value iterArg) {
+  if (!isa<BlockArgument>(iterArg))
+    return std::nullopt;
+
+  Block *block = cast<BlockArgument>(iterArg).getOwner();
+  Operation *parentOp = block->getParentOp();
+  if (!isa<LoopLikeOpInterface>(parentOp))
+    return std::nullopt;
+  auto loop = dyn_cast<LoopLikeOpInterface>(parentOp);
+  auto iterArgs = loop.getRegionIterArgs();
+  BlockArgument *it = llvm::find(iterArgs, iterArg);
+  if (it == iterArgs.end())
+    return std::nullopt;
+  return std::distance(iterArgs.begin(), it);
+}
+
 /// Implementation of fusing producer of a single slice by computing the
 /// slice of the producer in-place.
 std::optional<scf::SCFFuseProducerOfSliceResult>
@@ -1343,10 +1393,17 @@ mlir::scf::tileAndFuseProducerOfSlice(
                                         loops);
   if (!fusableProducer)
     return std::nullopt;
+  // llvm::outs() << "fusableProducer: " << fusableProducer << "\n";
   unsigned resultNumber = fusableProducer.getResultNumber();
+  // llvm::outs() << "resultNumber: " << resultNumber << "\n";
 
   OpBuilder::InsertionGuard g(rewriter);
-  rewriter.setInsertionPoint(candidateSliceOp);
+  auto loop = getInnerLoops(loops, candidateSliceOp);
+  // llvm::outs() << "loop: " << loop << "\n";
+  if (loop)
+    rewriter.setInsertionPointToStart(&loop.getLoopRegions().front()->front());
+  else
+    rewriter.setInsertionPoint(candidateSliceOp);
 
   // 2. Clone the fused producer
   // 2a. Compute the destination operands to use for the cloned operation.
@@ -1357,7 +1414,6 @@ mlir::scf::tileAndFuseProducerOfSlice(
           rewriter, fusableProducerOp->getLoc(), fusableProducerOp,
           origDestinationTensors)))
     return std::nullopt;
-
   clonedOpDestinationTensors = origDestinationTensors;
   if (destinationInitArg &&
       isa<DestinationStyleOpInterface>(fusableProducerOp)) {
@@ -1365,6 +1421,14 @@ mlir::scf::tileAndFuseProducerOfSlice(
     // destination passing style, update the destination of the producer to be
     // the source of the slice.
     clonedOpDestinationTensors[resultNumber] = candidateSliceOp.getSource();
+    std::optional<int> pos = getIterArgsPos(candidateSliceOp.getSource());
+    if (pos.has_value() && loop) {
+      // llvm::outs() << "pos.value() : " << pos.value();
+      // llvm::outs() << "loop.getRegionIterArgs()[pos.value()]: " <<
+      // loop.getRegionIterArgs()[pos.value()];
+      // clonedOpDestinationTensors[resultNumber] =
+      // loop.getRegionIterArgs()[pos.value()];
+    }
   }
   // 2c. Clone the fused producer.
   Operation *clonedProducerOp = cloneOpAndUpdateDestinationArgs(
