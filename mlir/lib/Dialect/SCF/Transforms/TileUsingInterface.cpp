@@ -25,6 +25,7 @@
 #include "mlir/Interfaces/TilingInterface.h"
 #include "mlir/Rewrite/FrozenRewritePatternSet.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
+#include "mlir/Transforms/LoopInvariantCodeMotionUtils.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Debug.h"
@@ -270,6 +271,14 @@ static bool canOmitTileOffsetInBoundsCheck(OpFoldResult givenTileSize,
   return *tileSizeConst * (*numThreadsConst - 1) < *iterSizeConst;
 }
 
+static LoopLikeOpInterface getLoopUseIv(Value iv) {
+  if (!isa<BlockArgument>(iv))
+    return {};
+  BlockArgument argument = cast<BlockArgument>(iv);
+  Operation *parentOp = argument.getOwner()->getParentOp();
+  return dyn_cast<LoopLikeOpInterface>(parentOp);
+}
+
 /// Compute the `OpFoldResult`s that represents the multi-dimensional
 /// `offset`s and `size`s of the tile of the iteration space that the
 /// innermost loop body of the generated tiled loops corresponds to.
@@ -291,6 +300,9 @@ getTileOffsetAndSizes(RewriterBase &rewriter, Location loc, ValueRange ivs,
     }
 
     Value iv = ivs[materializedLoopNum++];
+    LoopLikeOpInterface loop = getLoopUseIv(iv);
+    OpBuilder::InsertionGuard guard(rewriter);
+    rewriter.setInsertionPointToStart(&loop.getLoopRegions().front()->front());
     OpFoldResult offset = getAsOpFoldResult(iv);
     offsets.push_back(offset);
     OpFoldResult size =
@@ -1276,6 +1288,10 @@ mlir::scf::tileUsingSCF(RewriterBase &rewriter, TilingInterface op,
     return rewriter.notifyMatchFailure(
         op, "Failed to merge partial results from tiling");
   }
+
+  for (LoopLikeOpInterface loop : loops)
+    (void)hoistLoopInvariantSubsets(rewriter, loop);
+
   return scf::SCFTilingResult{tilingResult->tiledOps,
                               initTensors,
                               loops,
