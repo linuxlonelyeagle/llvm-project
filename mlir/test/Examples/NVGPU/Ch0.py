@@ -33,7 +33,7 @@ def main(alpha):
         # + operator generates arith.addi
         myValue = alpha + tidx
         # Print from a GPU thread
-        gpu.printf("GPU thread %llu has %llu\n", [tidx, myValue])
+        gpu.printf("GPU thread %llu has %llu\n", tidx, myValue)
 
     # 3. Call the GPU kernel
     kernel()
