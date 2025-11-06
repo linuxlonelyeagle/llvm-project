@@ -160,6 +160,22 @@ struct AffineOpSCFCanonicalizationPattern : public OpRewritePattern<OpTy> {
   }
 };
 
+struct SCFForLoopValueBoundCanonicalizationPattern
+    : public OpRewritePattern<scf::ForOp> {
+  using OpRewritePattern<scf::ForOp>::OpRewritePattern;
+  LogicalResult matchAndRewrite(scf::ForOp op,
+                                PatternRewriter &rewriter) const override {
+    std::optional<int64_t> lower = getConstantIntValue(op.getLowerBound());
+    std::optional<int64_t> uppper = getConstantIntValue(op.getStep());
+    if (!lower.has_value() || !uppper.has_value())
+      return failure();
+    Value step = op.getStep();
+    if (!isa<affine::AffineMinOp>(step.getDefiningOp()))
+      return failure();
+    auto affineMinOp = cast<affine::AffineMinOp>(step.getDefiningOp());
+  }
+};
+
 struct SCFForLoopCanonicalization
     : public impl::SCFForLoopCanonicalizationBase<SCFForLoopCanonicalization> {
   void runOnOperation() override {
