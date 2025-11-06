@@ -20,6 +20,7 @@
 #include "mlir/Dialect/SCF/Utils/AffineCanonicalizationUtils.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/Interfaces/ValueBoundsOpInterface.h"
 #include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/TypeSwitch.h"
 
@@ -160,19 +161,77 @@ struct AffineOpSCFCanonicalizationPattern : public OpRewritePattern<OpTy> {
   }
 };
 
+/// Replaces the given op with the contents of the given single-block region,
+/// using the operands of the block terminator to replace operation results.
+static void replaceOpWithRegion(PatternRewriter &rewriter, Operation *op,
+                                Region &region, ValueRange blockArgs = {}) {
+  assert(llvm::hasSingleElement(region) && "expected single-region block");
+  Block *block = &region.front();
+  Operation *terminator = block->getTerminator();
+  ValueRange results = terminator->getOperands();
+  rewriter.inlineBlockBefore(block, op, blockArgs);
+  rewriter.replaceOp(op, results);
+  rewriter.eraseOp(terminator);
+}
+
+/// Return true if we can prove that the we always run at least the first
+/// iteration of the ForOp.
+static bool alwaysRunsFirstIteration(PatternRewriter &rewriter, scf::ForOp op) {
+  // Can't perform the analysis if the loops's bounds aren't index-typed.
+  if (!op.getInductionVar().getType().isIndex())
+    return false;
+  ValueBoundsConstraintSet::Variable lower(rewriter.getSymbolIdentityMap(),
+                                           op.getLowerBound());
+  ValueBoundsConstraintSet::Variable upper(rewriter.getSymbolIdentityMap(),
+                                           op.getUpperBound());
+  FailureOr<bool> isLb = ValueBoundsConstraintSet::compare(
+      lower, ValueBoundsConstraintSet::LT, upper);
+  return isLb.value_or(false);
+}
+
+/// Return true if we can prove that the we never run more than one iteration of
+/// the ForOp.
+static bool neverRunsSecondIteration(PatternRewriter &rewriter, scf::ForOp op) {
+  // Can't perform the analysis if the loops's bounds aren't index-typed.
+  if (!op.getInductionVar().getType().isIndex())
+    return false;
+
+  // The loop will only loop once if the inducation variable for the next time
+  // in the loop is greater than or equal to upper.
+  MLIRContext *context = op.getContext();
+  SmallVector<Value> nextIterOperands = {op.getLowerBound(), op.getStep()};
+  AffineExpr nextIterExpr =
+      rewriter.getAffineSymbolExpr(0) + rewriter.getAffineSymbolExpr(1);
+  AffineMap nextItMap = AffineMap::get(0, 2, nextIterExpr);
+  ValueBoundsConstraintSet::Variable nextItVar(nextItMap, nextIterOperands);
+  ValueBoundsConstraintSet::Variable upperVar(rewriter.getSymbolIdentityMap(),
+                                              op.getUpperBound());
+  FailureOr<bool> isUpperUnderNextIter = ValueBoundsConstraintSet::compare(
+      nextItVar, ValueBoundsConstraintSet::LE, upperVar);
+  return isUpperUnderNextIter.value_or(false);
+}
+
 struct SCFForLoopValueBoundCanonicalizationPattern
     : public OpRewritePattern<scf::ForOp> {
   using OpRewritePattern<scf::ForOp>::OpRewritePattern;
   LogicalResult matchAndRewrite(scf::ForOp op,
                                 PatternRewriter &rewriter) const override {
-    std::optional<int64_t> lower = getConstantIntValue(op.getLowerBound());
-    std::optional<int64_t> uppper = getConstantIntValue(op.getStep());
-    if (!lower.has_value() || !uppper.has_value())
+    if (!(alwaysRunsFirstIteration(rewriter, op) &&
+          neverRunsSecondIteration(rewriter, op))) {
       return failure();
-    Value step = op.getStep();
-    if (!isa<affine::AffineMinOp>(step.getDefiningOp()))
-      return failure();
-    auto affineMinOp = cast<affine::AffineMinOp>(step.getDefiningOp());
+    }
+
+    // The first iteration is always run and the second iteration is never run
+    // so the loop always have 1 iteration. Inline its body and remove the loop.
+    SmallVector<Value> blockArgs;
+    blockArgs.reserve(op.getInits().size() + 1);
+    rewriter.setInsertionPointToStart(op.getBody());
+    Value lower = op.getLowerBound();
+    op.getInductionVar().replaceAllUsesWith(lower);
+    blockArgs.push_back(lower);
+    llvm::append_range(blockArgs, op.getInits());
+    replaceOpWithRegion(rewriter, op, op.getRegion(), blockArgs);
+    return success();
   }
 };
 
@@ -197,7 +256,8 @@ void mlir::scf::populateSCFForLoopCanonicalizationPatterns(
            AffineOpSCFCanonicalizationPattern<affine::AffineMaxOp>,
            DimOfIterArgFolder<tensor::DimOp>, DimOfIterArgFolder<memref::DimOp>,
            DimOfLoopResultFolder<tensor::DimOp>,
-           DimOfLoopResultFolder<memref::DimOp>>(ctx);
+           DimOfLoopResultFolder<memref::DimOp>,
+           SCFForLoopValueBoundCanonicalizationPattern>(ctx);
 }
 
 std::unique_ptr<Pass> mlir::createSCFForLoopCanonicalizationPass() {
