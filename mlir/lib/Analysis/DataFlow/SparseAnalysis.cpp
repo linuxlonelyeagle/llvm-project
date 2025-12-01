@@ -615,6 +615,8 @@ void AbstractSparseBackwardDataFlowAnalysis::visitRegionSuccessors(
     MutableArrayRef<BlockArgument> arguments =
         successor.getSuccessor()->getArguments();
     for (BlockArgument argument : arguments) {
+      // Visit property blockArgument of RegionBranchOp which isn't "control
+      // flow block arguments". For example, the IV of a loop.
       if (!llvm::is_contained(inputs, argument)) {
         regionArguments.push_back(argument);
       }
