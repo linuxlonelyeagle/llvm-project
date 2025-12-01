@@ -612,9 +612,10 @@ void AbstractSparseBackwardDataFlowAnalysis::visitRegionSuccessors(
 
     if (successor.isParent())
       continue;
-    auto arguments = successor.getSuccessor()->getArguments();
+    MutableArrayRef<BlockArgument> arguments =
+        successor.getSuccessor()->getArguments();
     for (BlockArgument argument : arguments) {
-      if (llvm::find(inputs, argument) == inputs.end()) {
+      if (!llvm::is_contained(inputs, argument)) {
         regionArguments.push_back(argument);
       }
     }

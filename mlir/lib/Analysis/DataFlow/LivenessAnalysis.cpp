@@ -276,7 +276,7 @@ void LivenessAnalysis::visitBranchRegionArgument(BlockArgument &blockArgument) {
   LDBG() << "Visiting branch region argument: " << blockArgument
          << "in op: " << OpWithFlags(parentOp, OpPrintingFlags().skipRegions());
   Liveness *argumentLiveness = getLatticeElement(blockArgument);
-  SmallVector<Liveness *> parentResultsLiveness;
+  SmallVector<Liveness *, 4> parentResultsLiveness;
   for (Value result : parentOp->getResults())
     parentResultsLiveness.push_back(getLatticeElement(result));
 
