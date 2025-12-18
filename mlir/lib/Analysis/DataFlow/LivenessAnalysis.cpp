@@ -230,6 +230,7 @@ void LivenessAnalysis::visitBranchOperand(OpOperand &operand) {
   // we will simply visit the op with this non-forwarded operand to potentially
   // mark it "live" due to type (1.a/3) liveness.
   SmallVector<Liveness *, 4> operandLiveness;
+  operandLiveness.push_back(getLatticeElement(operand.get()));
   SmallVector<const Liveness *, 4> resultsLiveness;
   for (const Value result : op->getResults())
     resultsLiveness.push_back(getLatticeElement(result));
