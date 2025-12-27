@@ -70,6 +70,9 @@ public:
   visitNonControlFlowArguments(Operation *op, const RegionSuccessor &successor,
                                ArrayRef<IntegerValueRangeLattice *> argLattices,
                                unsigned firstIndex) override;
+
+
+  void visitBranchPropertyArgument(SmallVector<BlockArgument> arguments, ArrayRef<IntegerValueRangeLattice *> argLattices) override; 
 };
 
 /// Succeeds if an op can be converted to its unsigned equivalent without

@@ -320,11 +320,26 @@ void AbstractSparseForwardDataFlowAnalysis::visitRegionSuccessors(
         if (!inputs.empty())
           firstIndex = cast<BlockArgument>(inputs.front()).getArgNumber();
         Region *region = point->getBlock()->getParent();
+        auto nonControlFlowArguments =
+            region->getArguments().slice(firstIndex, inputs.size());
         visitNonControlFlowArgumentsImpl(
-            branch,
-            RegionSuccessor(region, region->getArguments().slice(
-                                        firstIndex, inputs.size())),
-            lattices, firstIndex);
+            branch, RegionSuccessor(region, nonControlFlowArguments), lattices,
+            firstIndex);
+        MutableArrayRef<BlockArgument> propertyArguments =
+            nonControlFlowArguments.empty()
+                ? region->getArguments()
+                : region->getArguments().slice(0, firstIndex);
+        SmallVector<AbstractSparseLattice *> propertyArgumentLattices;
+        propertyArgumentLattices.reserve(propertyArguments.size());
+        for (BlockArgument argument : propertyArguments) {
+          AbstractSparseLattice *propertyArgumentLattice =
+              getLatticeElement(argument);
+          propertyArgumentLattices.push_back(propertyArgumentLattice);
+        }
+        if (!propertyArguments.empty())
+          visitBranchPropertyArgumentImpl(
+              {propertyArguments.begin(), propertyArguments.end()},
+              propertyArgumentLattices);
       }
     }
 
@@ -628,7 +643,7 @@ void AbstractSparseBackwardDataFlowAnalysis::visitRegionSuccessors(
     visitBranchOperand(op->getOpOperand(index));
   }
   for (BlockArgument argument : regionArguments) {
-    visitBranchRegionArgument(argument);
+    visitBranchPropertyArgument(argument);
   }
 }
 

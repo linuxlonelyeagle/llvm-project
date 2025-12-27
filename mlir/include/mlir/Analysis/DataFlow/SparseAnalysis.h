@@ -217,6 +217,10 @@ protected:
       Operation *op, const RegionSuccessor &successor,
       ArrayRef<AbstractSparseLattice *> argLattices, unsigned firstIndex) = 0;
 
+  virtual void visitBranchPropertyArgumentImpl(
+      SmallVector<BlockArgument> arguments,
+      ArrayRef<AbstractSparseLattice *> argLattices) = 0;
+
   /// Get the lattice element of a value.
   virtual AbstractSparseLattice *getLatticeElement(Value value) = 0;
 
@@ -335,6 +339,11 @@ public:
         firstIndex + successor.getSuccessorInputs().size()));
   }
 
+  virtual void visitBranchPropertyArgument(SmallVector<BlockArgument> arguments,
+                                           ArrayRef<StateT *> argLattices) {
+    setAllToEntryStates(argLattices);
+  }
+
 protected:
   /// Get the lattice element for a value.
   StateT *getLatticeElement(Value value) override {
@@ -391,6 +400,14 @@ private:
          argLattices.size()},
         firstIndex);
   }
+  void visitBranchPropertyArgumentImpl(
+      SmallVector<BlockArgument> arguments,
+      ArrayRef<AbstractSparseLattice *> argLattices) override {
+    visitBranchPropertyArgument(
+        arguments, {reinterpret_cast<StateT *const *>(argLattices.begin()),
+                    argLattices.size()});
+  }
+
   void setToEntryState(AbstractSparseLattice *lattice) override {
     return setToEntryState(reinterpret_cast<StateT *>(lattice));
   }
@@ -431,7 +448,7 @@ protected:
   // Visit operands on branch instructions that are not forwarded.
   virtual void visitBranchOperand(OpOperand &operand) = 0;
 
-  virtual void visitBranchRegionArgument(BlockArgument &argument) = 0;
+  virtual void visitBranchPropertyArgument(BlockArgument &argument) = 0;
 
   // Visit operands on call instructions that are not forwarded.
   virtual void visitCallOperand(OpOperand &operand) = 0;

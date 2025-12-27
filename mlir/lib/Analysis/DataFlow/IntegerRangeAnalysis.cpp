@@ -180,6 +180,14 @@ void IntegerRangeAnalysis::visitNonControlFlowArguments(
     return;
   }
 
+  return SparseForwardDataFlowAnalysis::visitNonControlFlowArguments(
+      op, successor, argLattices, firstIndex);
+}
+
+void IntegerRangeAnalysis::visitBranchPropertyArgument(
+    SmallVector<BlockArgument> arguments,
+    ArrayRef<IntegerValueRangeLattice *> argLattices) {
+
   /// Given a lower bound, upper bound, or step from a LoopLikeInterface return
   /// the lower/upper bound for that result if possible.
   auto getLoopBoundFromFold = [&](OpFoldResult loopBound, Type boundType,
@@ -202,21 +210,16 @@ void IntegerRangeAnalysis::visitNonControlFlowArguments(
                     : APInt::getSignedMinValue(width);
   };
 
+  Operation *op = arguments.front().getOwner()->getParentOp();
   // Infer bounds for loop arguments that have static bounds
   if (auto loop = dyn_cast<LoopLikeOpInterface>(op)) {
-    std::optional<llvm::SmallVector<Value>> maybeIvs =
-        loop.getLoopInductionVars();
-    if (!maybeIvs) {
-      return SparseForwardDataFlowAnalysis ::visitNonControlFlowArguments(
-          op, successor, argLattices, firstIndex);
-    }
     // This shouldn't be returning nullopt if there are indunction variables.
     SmallVector<OpFoldResult> lowerBounds = *loop.getLoopLowerBounds();
     SmallVector<OpFoldResult> upperBounds = *loop.getLoopUpperBounds();
     SmallVector<OpFoldResult> steps = *loop.getLoopSteps();
-    for (auto [iv, lowerBound, upperBound, step] :
-         llvm::zip_equal(*maybeIvs, lowerBounds, upperBounds, steps)) {
-      Block *block = iv.getParentBlock();
+    for (auto [iv, lowerBound, upperBound, step, argLattice] : llvm::zip_equal(
+             arguments, lowerBounds, upperBounds, steps, argLattices)) {
+      Block *block = iv.getOwner();
       APInt min = getLoopBoundFromFold(lowerBound, iv.getType(), block,
                                        /*getUpper=*/false);
       APInt max = getLoopBoundFromFold(upperBound, iv.getType(), block,
@@ -237,14 +240,12 @@ void IntegerRangeAnalysis::visitNonControlFlowArguments(
       // resulting range is meaningless and should not be used in further
       // inferences.
       if (max.sge(min)) {
-        IntegerValueRangeLattice *ivEntry = getLatticeElement(iv);
         auto ivRange = ConstantIntRanges::fromSigned(min, max);
-        propagateIfChanged(ivEntry, ivEntry->join(IntegerValueRange{ivRange}));
+        propagateIfChanged(argLattice,
+                           argLattice->join(IntegerValueRange{ivRange}));
       }
     }
     return;
   }
-
-  return SparseForwardDataFlowAnalysis::visitNonControlFlowArguments(
-      op, successor, argLattices, firstIndex);
+  // setAllToEntryStates(argLattices);
 }

@@ -272,7 +272,8 @@ void LivenessAnalysis::visitCallOperand(OpOperand &operand) {
   propagateIfChanged(operandLiveness, operandLiveness->markLive());
 }
 
-void LivenessAnalysis::visitBranchRegionArgument(BlockArgument &blockArgument) {
+void LivenessAnalysis::visitBranchPropertyArgument(
+    BlockArgument &blockArgument) {
   Operation *parentOp = blockArgument.getOwner()->getParentOp();
   LDBG() << "Visiting branch region argument: " << blockArgument
          << "in op: " << OpWithFlags(parentOp, OpPrintingFlags().skipRegions());
