@@ -177,11 +177,7 @@ void IntegerRangeAnalysis::visitNonControlFlowArguments(
     };
 
     inferrable.inferResultRangesFromOptional(argRanges, joinCallback);
-    return;
   }
-
-  return SparseForwardDataFlowAnalysis::visitNonControlFlowArguments(
-      op, successor, argLattices, firstIndex);
 }
 
 void IntegerRangeAnalysis::visitBranchPropertyArgument(
@@ -245,7 +241,5 @@ void IntegerRangeAnalysis::visitBranchPropertyArgument(
                            argLattice->join(IntegerValueRange{ivRange}));
       }
     }
-    return;
   }
-  // setAllToEntryStates(argLattices);
 }

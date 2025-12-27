@@ -311,6 +311,21 @@ void AbstractSparseForwardDataFlowAnalysis::visitRegionSuccessors(
       if (!point->isBlockStart()) {
         if (!inputs.empty())
           firstIndex = cast<OpResult>(inputs.front()).getResultNumber();
+
+        Region *region = point->getBlock()->getParent();
+        MutableArrayRef<BlockArgument> propertyArguments =
+            region->getArguments().drop_back(inputs.size());
+        SmallVector<AbstractSparseLattice *> propertyArgumentLattices;
+        propertyArgumentLattices.reserve(propertyArguments.size());
+        for (BlockArgument argument : propertyArguments) {
+          AbstractSparseLattice *propertyArgumentLattice =
+              getLatticeElement(argument);
+          propertyArgumentLattices.push_back(propertyArgumentLattice);
+        }
+        if (!propertyArguments.empty())
+          visitBranchPropertyArgumentImpl(
+              {propertyArguments.begin(), propertyArguments.end()},
+              propertyArgumentLattices);
         visitNonControlFlowArgumentsImpl(
             branch,
             RegionSuccessor(
@@ -322,9 +337,7 @@ void AbstractSparseForwardDataFlowAnalysis::visitRegionSuccessors(
         Region *region = point->getBlock()->getParent();
         auto nonControlFlowArguments =
             region->getArguments().slice(firstIndex, inputs.size());
-        visitNonControlFlowArgumentsImpl(
-            branch, RegionSuccessor(region, nonControlFlowArguments), lattices,
-            firstIndex);
+
         MutableArrayRef<BlockArgument> propertyArguments =
             nonControlFlowArguments.empty()
                 ? region->getArguments()
@@ -340,6 +353,9 @@ void AbstractSparseForwardDataFlowAnalysis::visitRegionSuccessors(
           visitBranchPropertyArgumentImpl(
               {propertyArguments.begin(), propertyArguments.end()},
               propertyArgumentLattices);
+        visitNonControlFlowArgumentsImpl(
+            branch, RegionSuccessor(region, nonControlFlowArguments), lattices,
+            firstIndex);
       }
     }
 
