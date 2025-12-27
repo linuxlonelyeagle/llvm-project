@@ -71,8 +71,9 @@ public:
                                ArrayRef<IntegerValueRangeLattice *> argLattices,
                                unsigned firstIndex) override;
 
-
-  void visitBranchPropertyArgument(SmallVector<BlockArgument> arguments, ArrayRef<IntegerValueRangeLattice *> argLattices) override; 
+  void visitBranchPropertyArgument(
+      SmallVector<BlockArgument> arguments,
+      ArrayRef<IntegerValueRangeLattice *> argLattices) override;
 };
 
 /// Succeeds if an op can be converted to its unsigned equivalent without
