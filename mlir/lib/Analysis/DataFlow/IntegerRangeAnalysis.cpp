@@ -181,7 +181,7 @@ void IntegerRangeAnalysis::visitNonControlFlowArguments(
 }
 
 void IntegerRangeAnalysis::visitBranchPropertyArgument(
-    SmallVector<BlockArgument> arguments,
+    ArrayRef<BlockArgument> arguments,
     ArrayRef<IntegerValueRangeLattice *> argLattices) {
 
   /// Given a lower bound, upper bound, or step from a LoopLikeInterface return

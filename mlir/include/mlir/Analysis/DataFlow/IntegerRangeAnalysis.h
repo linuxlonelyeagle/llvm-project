@@ -72,7 +72,7 @@ public:
                                unsigned firstIndex) override;
 
   void visitBranchPropertyArgument(
-      SmallVector<BlockArgument> arguments,
+      ArrayRef<BlockArgument> arguments,
       ArrayRef<IntegerValueRangeLattice *> argLattices) override;
 };
 

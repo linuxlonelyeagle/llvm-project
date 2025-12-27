@@ -218,7 +218,7 @@ protected:
       ArrayRef<AbstractSparseLattice *> argLattices, unsigned firstIndex) = 0;
 
   virtual void visitBranchPropertyArgumentImpl(
-      SmallVector<BlockArgument> arguments,
+      ArrayRef<BlockArgument> arguments,
       ArrayRef<AbstractSparseLattice *> argLattices) = 0;
 
   /// Get the lattice element of a value.
@@ -339,7 +339,9 @@ public:
         firstIndex + successor.getSuccessorInputs().size()));
   }
 
-  virtual void visitBranchPropertyArgument(SmallVector<BlockArgument> arguments,
+  // visitBranchPropertyArgument is used to visit the property argument of a
+  // branch op, such as the loop's IV.
+  virtual void visitBranchPropertyArgument(ArrayRef<BlockArgument> arguments,
                                            ArrayRef<StateT *> argLattices) {
     setAllToEntryStates(argLattices);
   }
@@ -401,7 +403,7 @@ private:
         firstIndex);
   }
   void visitBranchPropertyArgumentImpl(
-      SmallVector<BlockArgument> arguments,
+      ArrayRef<BlockArgument> arguments,
       ArrayRef<AbstractSparseLattice *> argLattices) override {
     visitBranchPropertyArgument(
         arguments, {reinterpret_cast<StateT *const *>(argLattices.begin()),
@@ -448,6 +450,8 @@ protected:
   // Visit operands on branch instructions that are not forwarded.
   virtual void visitBranchOperand(OpOperand &operand) = 0;
 
+  // visitBranchPropertyArgument is used to visit the property argument of a
+  // branch op, such as the loop's IV
   virtual void visitBranchPropertyArgument(BlockArgument &argument) = 0;
 
   // Visit operands on call instructions that are not forwarded.
