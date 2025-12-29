@@ -71,7 +71,7 @@ public:
                                ArrayRef<IntegerValueRangeLattice *> argLattices,
                                unsigned firstIndex) override;
 
-  void visitBranchPropertyArgument(
+  void visitNonControlFlowArguments(
       ArrayRef<BlockArgument> arguments,
       ArrayRef<IntegerValueRangeLattice *> argLattices) override;
 };

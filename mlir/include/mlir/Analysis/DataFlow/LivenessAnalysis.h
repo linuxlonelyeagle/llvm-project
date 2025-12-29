@@ -88,7 +88,7 @@ public:
 
   void setToExitState(Liveness *lattice) override;
 
-  void visitBranchPropertyArgument(BlockArgument &argument) override;
+  void visitNonControlFlowArguments(BlockArgument &argument) override;
 };
 
 //===----------------------------------------------------------------------===//

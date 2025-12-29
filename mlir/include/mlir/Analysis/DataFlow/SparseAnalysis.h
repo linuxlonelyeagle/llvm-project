@@ -217,7 +217,7 @@ protected:
       Operation *op, const RegionSuccessor &successor,
       ArrayRef<AbstractSparseLattice *> argLattices, unsigned firstIndex) = 0;
 
-  virtual void visitBranchPropertyArgumentImpl(
+  virtual void visitNonControlFlowArgumentsImpl(
       ArrayRef<BlockArgument> arguments,
       ArrayRef<AbstractSparseLattice *> argLattices) = 0;
 
@@ -339,10 +339,12 @@ public:
         firstIndex + successor.getSuccessorInputs().size()));
   }
 
-  // visitBranchPropertyArgument is used to visit the property argument of a
-  // branch op, such as the loop's IV.
-  virtual void visitBranchPropertyArgument(ArrayRef<BlockArgument> arguments,
-                                           ArrayRef<StateT *> argLattices) {
+  // It is used to access the non-forwarded variables of a region, such as the
+  // induction variables of a loop. The sizes of `arguments` and `argLattices`
+  // are the same, each argument corresponds to an argLattice at the same
+  // position.
+  virtual void visitNonControlFlowArguments(ArrayRef<BlockArgument> arguments,
+                                            ArrayRef<StateT *> argLattices) {
     setAllToEntryStates(argLattices);
   }
 
@@ -402,10 +404,10 @@ private:
          argLattices.size()},
         firstIndex);
   }
-  void visitBranchPropertyArgumentImpl(
+  void visitNonControlFlowArgumentsImpl(
       ArrayRef<BlockArgument> arguments,
       ArrayRef<AbstractSparseLattice *> argLattices) override {
-    visitBranchPropertyArgument(
+    visitNonControlFlowArguments(
         arguments, {reinterpret_cast<StateT *const *>(argLattices.begin()),
                     argLattices.size()});
   }
@@ -450,9 +452,9 @@ protected:
   // Visit operands on branch instructions that are not forwarded.
   virtual void visitBranchOperand(OpOperand &operand) = 0;
 
-  // visitBranchPropertyArgument is used to visit the property argument of a
-  // branch op, such as the loop's IV
-  virtual void visitBranchPropertyArgument(BlockArgument &argument) = 0;
+  // Visit the non-forwarded variables of a region, such as the
+  // induction variables of a loop.
+  virtual void visitNonControlFlowArgumentst(BlockArgument &argument) = 0;
 
   // Visit operands on call instructions that are not forwarded.
   virtual void visitCallOperand(OpOperand &operand) = 0;

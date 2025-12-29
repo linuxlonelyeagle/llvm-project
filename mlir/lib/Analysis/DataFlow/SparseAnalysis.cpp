@@ -312,20 +312,35 @@ void AbstractSparseForwardDataFlowAnalysis::visitRegionSuccessors(
         if (!inputs.empty())
           firstIndex = cast<OpResult>(inputs.front()).getResultNumber();
 
+        SmallVector<BlockArgument> notSuccessorInputsArguments;
         Region *region = point->getBlock()->getParent();
-        MutableArrayRef<BlockArgument> propertyArguments =
-            region->getArguments().drop_back(inputs.size());
-        SmallVector<AbstractSparseLattice *> propertyArgumentLattices;
-        propertyArgumentLattices.reserve(propertyArguments.size());
-        for (BlockArgument argument : propertyArguments) {
-          AbstractSparseLattice *propertyArgumentLattice =
-              getLatticeElement(argument);
-          propertyArgumentLattices.push_back(propertyArgumentLattice);
+        SmallVector<RegionSuccessor> successors;
+        branch.getSuccessorRegions(*region, successors);
+        for (RegionSuccessor successor : successors) {
+          if (successor.isParent())
+            continue;
+          auto arguments = successor.getSuccessor()->getArguments();
+          ValueRange regionInputs = successor.getSuccessorInputs();
+          for (auto argument : arguments) {
+            if (llvm::find(regionInputs, argument) == regionInputs.end()) {
+              notSuccessorInputsArguments.push_back(argument);
+            }
+          }
         }
-        if (!propertyArguments.empty())
-          visitBranchPropertyArgumentImpl(
-              {propertyArguments.begin(), propertyArguments.end()},
-              propertyArgumentLattices);
+
+        SmallVector<AbstractSparseLattice *>
+            notSuccessorInputsArgumentsLattices;
+        notSuccessorInputsArgumentsLattices.reserve(
+            notSuccessorInputsArguments.size());
+        for (BlockArgument argument : notSuccessorInputsArguments) {
+          AbstractSparseLattice *notSuccessorInputsArgumentsLattice =
+              getLatticeElement(argument);
+          notSuccessorInputsArgumentsLattices.push_back(
+              notSuccessorInputsArgumentsLattice);
+        }
+        if (!notSuccessorInputsArguments.empty())
+          visitNonControlFlowArgumentsImpl(notSuccessorInputsArguments,
+                                           notSuccessorInputsArgumentsLattices);
         visitNonControlFlowArgumentsImpl(
             branch,
             RegionSuccessor(
@@ -335,26 +350,26 @@ void AbstractSparseForwardDataFlowAnalysis::visitRegionSuccessors(
         if (!inputs.empty())
           firstIndex = cast<BlockArgument>(inputs.front()).getArgNumber();
         Region *region = point->getBlock()->getParent();
-        auto nonControlFlowArguments =
+        auto controlFlowArguments =
             region->getArguments().slice(firstIndex, inputs.size());
 
-        MutableArrayRef<BlockArgument> propertyArguments =
-            nonControlFlowArguments.empty()
+        MutableArrayRef<BlockArgument> notSuccessorInputsArguments =
+            controlFlowArguments.empty()
                 ? region->getArguments()
                 : region->getArguments().slice(0, firstIndex);
         SmallVector<AbstractSparseLattice *> propertyArgumentLattices;
-        propertyArgumentLattices.reserve(propertyArguments.size());
-        for (BlockArgument argument : propertyArguments) {
-          AbstractSparseLattice *propertyArgumentLattice =
+        propertyArgumentLattices.reserve(notSuccessorInputsArguments.size());
+        for (BlockArgument argument : notSuccessorInputsArguments) {
+          AbstractSparseLattice *notSuccessorInputsArgumentsLattice =
               getLatticeElement(argument);
-          propertyArgumentLattices.push_back(propertyArgumentLattice);
+          propertyArgumentLattices.push_back(
+              notSuccessorInputsArgumentsLattice);
         }
-        if (!propertyArguments.empty())
-          visitBranchPropertyArgumentImpl(
-              {propertyArguments.begin(), propertyArguments.end()},
-              propertyArgumentLattices);
+        if (!notSuccessorInputsArguments.empty())
+          visitNonControlFlowArgumentsImpl(notSuccessorInputsArguments,
+                                           propertyArgumentLattices);
         visitNonControlFlowArgumentsImpl(
-            branch, RegionSuccessor(region, nonControlFlowArguments), lattices,
+            branch, RegionSuccessor(region, controlFlowArguments), lattices,
             firstIndex);
       }
     }
@@ -659,7 +674,7 @@ void AbstractSparseBackwardDataFlowAnalysis::visitRegionSuccessors(
     visitBranchOperand(op->getOpOperand(index));
   }
   for (BlockArgument argument : regionArguments) {
-    visitBranchPropertyArgument(argument);
+    visitNonControlFlowArguments(argument);
   }
 }
 

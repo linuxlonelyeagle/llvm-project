@@ -449,7 +449,7 @@ public:
 
   void visitCallOperand(OpOperand &operand) override {};
 
-  void visitBranchPropertyArgument(BlockArgument &argument) override {};
+  void visitNonControlFlowArguments(BlockArgument &argument) override {};
 
   void visitExternalCall(CallOpInterface call,
                          ArrayRef<LayoutInfoLattice *> operands,

@@ -180,7 +180,7 @@ void IntegerRangeAnalysis::visitNonControlFlowArguments(
   }
 }
 
-void IntegerRangeAnalysis::visitBranchPropertyArgument(
+void IntegerRangeAnalysis::visitNonControlFlowArguments(
     ArrayRef<BlockArgument> arguments,
     ArrayRef<IntegerValueRangeLattice *> argLattices) {
 
