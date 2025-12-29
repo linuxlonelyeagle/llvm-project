@@ -454,7 +454,7 @@ protected:
 
   // Visit the non-forwarded variables of a region, such as the
   // induction variables of a loop.
-  virtual void visitNonControlFlowArgumentst(BlockArgument &argument) = 0;
+  virtual void visitNonControlFlowArguments(BlockArgument &argument) = 0;
 
   // Visit operands on call instructions that are not forwarded.
   virtual void visitCallOperand(OpOperand &operand) = 0;

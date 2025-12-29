@@ -319,10 +319,11 @@ void AbstractSparseForwardDataFlowAnalysis::visitRegionSuccessors(
         for (RegionSuccessor successor : successors) {
           if (successor.isParent())
             continue;
-          auto arguments = successor.getSuccessor()->getArguments();
+          Region::BlockArgListType arguments =
+              successor.getSuccessor()->getArguments();
           ValueRange regionInputs = successor.getSuccessorInputs();
-          for (auto argument : arguments) {
-            if (llvm::find(regionInputs, argument) == regionInputs.end()) {
+          for (BlockArgument argument : arguments) {
+            if (!llvm::is_contained(regionInputs, argument)) {
               notSuccessorInputsArguments.push_back(argument);
             }
           }
@@ -350,7 +351,7 @@ void AbstractSparseForwardDataFlowAnalysis::visitRegionSuccessors(
         if (!inputs.empty())
           firstIndex = cast<BlockArgument>(inputs.front()).getArgNumber();
         Region *region = point->getBlock()->getParent();
-        auto controlFlowArguments =
+        MutableArrayRef<BlockArgument> controlFlowArguments =
             region->getArguments().slice(firstIndex, inputs.size());
 
         MutableArrayRef<BlockArgument> notSuccessorInputsArguments =
