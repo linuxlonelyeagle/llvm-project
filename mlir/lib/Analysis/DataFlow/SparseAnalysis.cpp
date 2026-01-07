@@ -176,16 +176,34 @@ void AbstractSparseForwardDataFlowAnalysis::visitBlock(Block *block) {
     if (callable && callable.getCallableRegion() == block->getParent())
       return visitCallableOperation(callable, argLattices);
 
+    SmallVector<BlockArgument> notSuccessorInputsArguments;
+    SmallVector<AbstractSparseLattice *> notSuccessorInputsArgumentLattices;
+    SmallVector<BlockArgument> successorInputsArguments;
+    SmallVector<AbstractSparseLattice *> successorInputsArgumentsLattices;
+    RegionSuccessor successor(block->getParent());
+    ValueRange regionInputs = successor.getSuccessorInputs();
+    for (BlockArgument argument : block->getArguments()) {
+      if (!llvm::is_contained(regionInputs, argument)) {
+        notSuccessorInputsArguments.push_back(argument);
+        notSuccessorInputsArgumentLattices.push_back(
+            getLatticeElement(argument));
+      } else {
+        successorInputsArguments.push_back(argument);
+        successorInputsArgumentsLattices.push_back(getLatticeElement(argument));
+      }
+    }
     // Check if the lattices can be determined from region control flow.
     if (auto branch = dyn_cast<RegionBranchOpInterface>(block->getParentOp())) {
+      setAllToEntryStates(notSuccessorInputsArgumentLattices);
       return visitRegionSuccessors(getProgramPointBefore(block), branch,
-                                   block->getParent(), argLattices);
+                                   block->getParent(),
+                                   successorInputsArgumentsLattices);
     }
 
     // Otherwise, we can't reason about the data-flow.
     return visitNonControlFlowArgumentsImpl(block->getParentOp(),
                                             RegionSuccessor(block->getParent()),
-                                            argLattices, /*firstIndex=*/0);
+                                            successorInputsArgumentsLattices);
   }
 
   // Iterate over the predecessors of the non-entry block.
@@ -306,29 +324,17 @@ void AbstractSparseForwardDataFlowAnalysis::visitRegionSuccessors(
     assert(inputs.size() == operands->size() &&
            "expected the same number of successor inputs as operands");
 
-    unsigned firstIndex = 0;
     if (inputs.size() != lattices.size()) {
-      if (!point->isBlockStart()) {
-        if (!inputs.empty())
-          firstIndex = cast<OpResult>(inputs.front()).getResultNumber();
+      if (point == getProgramPointAfter(branch)) {
         visitNonControlFlowArgumentsImpl(
-            branch,
-            RegionSuccessor(
-                branch, branch->getResults().slice(firstIndex, inputs.size())),
-            lattices, firstIndex);
-      } else {
-        if (!inputs.empty())
-          firstIndex = cast<BlockArgument>(inputs.front()).getArgNumber();
+            branch, RegionSuccessor(branch, branch->getResults()), lattices);
+      } else if (point->isBlockStart()) {
         Region *region = point->getBlock()->getParent();
-        visitNonControlFlowArgumentsImpl(
-            branch,
-            RegionSuccessor(region, region->getArguments().slice(
-                                        firstIndex, inputs.size())),
-            lattices, firstIndex);
+        visitNonControlFlowArgumentsImpl(branch, successor, lattices);
       }
     }
 
-    for (auto it : llvm::zip(*operands, lattices.drop_front(firstIndex)))
+    for (auto it : llvm::zip(*operands, lattices))
       join(std::get<1>(it), *getLatticeElementFor(point, std::get<0>(it)));
   }
 }
