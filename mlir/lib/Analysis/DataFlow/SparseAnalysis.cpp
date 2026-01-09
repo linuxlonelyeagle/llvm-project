@@ -603,16 +603,8 @@ void AbstractSparseBackwardDataFlowAnalysis::visitRegionSuccessors(
     if (successor.isParent())
       continue;
     SmallVector<BlockArgument> noControlFlowArguments;
-    MutableArrayRef<BlockArgument> arguments =
-        successor.getSuccessor()->getArguments();
-    ValueRange inputs = successor.getSuccessorInputs();
-    for (BlockArgument argument : arguments) {
-      // Visit blockArgument of RegionBranchOp which isn't "control
-      // flow block arguments". For example, the IV of a loop.
-      if (!llvm::is_contained(inputs, argument)) {
-        noControlFlowArguments.push_back(argument);
-      }
-    }
+    for (Value arg : successor.getRegionNonforwardedArguments())
+      noControlFlowArguments.push_back(cast<BlockArgument>(arg));
     visitNonControlFlowArguments(successor, noControlFlowArguments);
   }
 

@@ -228,6 +228,24 @@ public:
   /// the current region.
   ValueRange getSuccessorInputs() const { return inputs; }
 
+  ValueRange getRegionNonforwardedArguments() const {
+    if (isParent())
+      return {};
+    SmallVector<Value> nonForwardArguments;
+    MutableArrayRef<BlockArgument> arguments = getSuccessor()->getArguments();
+    if (arguments.empty())
+      return {};
+    ValueRange inputs = getSuccessorInputs();
+    if (inputs.empty())
+      return arguments;
+    for (BlockArgument argument : arguments) {
+      if (!llvm::is_contained(inputs, argument)) {
+        nonForwardArguments.push_back(argument);
+      }
+    }
+    return nonForwardArguments;
+  }
+
   bool operator==(RegionSuccessor rhs) const {
     return successor == rhs.successor && inputs == rhs.inputs;
   }
