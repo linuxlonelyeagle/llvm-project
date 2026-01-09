@@ -215,7 +215,11 @@ protected:
   /// of loops).
   virtual void visitNonControlFlowArgumentsImpl(
       Operation *op, const RegionSuccessor &successor,
-      ArrayRef<AbstractSparseLattice *> argLattices, unsigned firstIndex) = 0;
+      ArrayRef<AbstractSparseLattice *> argLattices) = 0;
+
+  virtual void visitNonControlFlowArgumentsImpl(
+      const RegionSuccessor &successor,
+      ArrayRef<AbstractSparseLattice *> argLattices) = 0;
 
   /// Get the lattice element of a value.
   virtual AbstractSparseLattice *getLatticeElement(Value value) = 0;
@@ -328,11 +332,11 @@ public:
   /// index of the first element of `argLattices` that is set by control-flow.
   virtual void visitNonControlFlowArguments(Operation *op,
                                             const RegionSuccessor &successor,
-                                            ArrayRef<StateT *> argLattices,
-                                            unsigned firstIndex) {
-    setAllToEntryStates(argLattices.take_front(firstIndex));
-    setAllToEntryStates(argLattices.drop_front(
-        firstIndex + successor.getSuccessorInputs().size()));
+                                            ArrayRef<StateT *> argLattices) {}
+
+  virtual void visitNonControlFlowArguments(const RegionSuccessor &successor,
+                                            ArrayRef<StateT *> argLattices) {
+    setAllToEntryStates(argLattices);
   }
 
 protected:
@@ -383,13 +387,18 @@ private:
   }
   void visitNonControlFlowArgumentsImpl(
       Operation *op, const RegionSuccessor &successor,
-      ArrayRef<AbstractSparseLattice *> argLattices,
-      unsigned firstIndex) override {
+      ArrayRef<AbstractSparseLattice *> argLattices) override {
     visitNonControlFlowArguments(
         op, successor,
         {reinterpret_cast<StateT *const *>(argLattices.begin()),
-         argLattices.size()},
-        firstIndex);
+         argLattices.size()});
+  }
+  void visitNonControlFlowArgumentsImpl(
+      const RegionSuccessor &successor,
+      ArrayRef<AbstractSparseLattice *> argLattices) override {
+    visitNonControlFlowArguments(
+        successor, {reinterpret_cast<StateT *const *>(argLattices.begin()),
+                    argLattices.size()});
   }
   void setToEntryState(AbstractSparseLattice *lattice) override {
     return setToEntryState(reinterpret_cast<StateT *>(lattice));
