@@ -602,10 +602,8 @@ void AbstractSparseBackwardDataFlowAnalysis::visitRegionSuccessors(
   for (RegionSuccessor &successor : successors) {
     if (successor.isParent())
       continue;
-    SmallVector<BlockArgument> noControlFlowArguments;
-    for (Value arg : successor.getRegionNonforwardedArguments())
-      noControlFlowArguments.push_back(cast<BlockArgument>(arg));
-    visitNonControlFlowArguments(successor, noControlFlowArguments);
+    visitNonControlFlowArguments(successor,
+                                 successor.getRegionNonForwardedArguments());
   }
 
   // All operands not forwarded to regions are typically parameters of the

@@ -228,11 +228,14 @@ public:
   /// the current region.
   ValueRange getSuccessorInputs() const { return inputs; }
 
-  ValueRange getRegionNonforwardedArguments() const {
+  /// If successor is a region, return the non-forwarded arguments of the
+  /// region. If successor is a operation, it don't have non-forwarded
+  /// arguments.
+  SmallVector<BlockArgument> getRegionNonForwardedArguments() const {
     if (isParent())
       return {};
-    SmallVector<Value> nonForwardArguments;
-    MutableArrayRef<BlockArgument> arguments = getSuccessor()->getArguments();
+    SmallVector<BlockArgument> nonForwardArguments;
+    SmallVector<BlockArgument> arguments(getSuccessor()->getArguments());
     if (arguments.empty())
       return {};
     ValueRange inputs = getSuccessorInputs();
