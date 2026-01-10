@@ -217,6 +217,9 @@ protected:
       Operation *op, const RegionSuccessor &successor,
       ArrayRef<AbstractSparseLattice *> argLattices) = 0;
 
+  /// Given a region successor and the lattices of the non-forwarded arguments,
+  /// compute the lattice values for non-forwarded arguments, (ex. the bounds
+  /// of loops).
   virtual void visitNonControlFlowArgumentsImpl(
       const RegionSuccessor &successor,
       ArrayRef<AbstractSparseLattice *> argLattices) = 0;
@@ -328,12 +331,14 @@ public:
   /// operands, and a region successor, compute the lattice values for block
   /// arguments that are not accounted for by the branching control flow (ex.
   /// the bounds of loops). By default, this method marks all such lattice
-  /// elements as having reached a pessimistic fixpoint. `firstIndex` is the
-  /// index of the first element of `argLattices` that is set by control-flow.
+  /// elements as having reached a pessimistic fixpoint.
   virtual void visitNonControlFlowArguments(Operation *op,
                                             const RegionSuccessor &successor,
                                             ArrayRef<StateT *> argLattices) {}
 
+  /// Given a region successor and the lattices of the non-forwarded arguments,
+  /// compute the lattice values for non-forwarded arguments, (ex. the bounds
+  /// of loops).
   virtual void visitNonControlFlowArguments(const RegionSuccessor &successor,
                                             ArrayRef<StateT *> argLattices) {
     setAllToEntryStates(argLattices);

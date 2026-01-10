@@ -64,12 +64,13 @@ public:
   /// Visit block arguments or operation results of an operation with region
   /// control-flow for which values are not defined by region control-flow. This
   /// function calls `InferIntRangeInterface` to provide values for block
-  /// arguments or tries to reduce the range on loop induction variables with
-  /// known bounds.
+  /// arguments.
   void visitNonControlFlowArguments(
       Operation *op, const RegionSuccessor &successor,
       ArrayRef<IntegerValueRangeLattice *> argLattices) override;
 
+  /// Try to reduce the range on loop induction variables with
+  /// known bounds.
   void visitNonControlFlowArguments(
       const RegionSuccessor &successor,
       ArrayRef<IntegerValueRangeLattice *> argLattices) override;

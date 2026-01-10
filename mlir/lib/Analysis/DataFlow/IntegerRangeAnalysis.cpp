@@ -212,7 +212,7 @@ void IntegerRangeAnalysis::visitNonControlFlowArguments(
   // Infer bounds for loop arguments that have static bounds
   if (auto loop = dyn_cast<LoopLikeOpInterface>(op)) {
     // This shouldn't be returning nullopt if there are indunction variables.
-    SmallVector<Value> ivs = successor.getRegionNonforwardedArguments();
+    SmallVector<BlockArgument> ivs = successor.getRegionNonForwardedArguments();
     SmallVector<OpFoldResult> lowerBounds = *loop.getLoopLowerBounds();
     SmallVector<OpFoldResult> upperBounds = *loop.getLoopUpperBounds();
     SmallVector<OpFoldResult> steps = *loop.getLoopSteps();
