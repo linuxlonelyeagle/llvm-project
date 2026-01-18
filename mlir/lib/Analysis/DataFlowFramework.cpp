@@ -46,7 +46,8 @@ void AnalysisState::addDependency(ProgramPoint *dependent,
   DATAFLOW_DEBUG({
     if (inserted) {
       LDBG() << "Creating dependency between " << debugName << " of " << anchor
-             << "\nand " << debugName << " on " << *dependent;
+             << "\nand " << debugName << " on " << *dependent << "\nwith "
+             << analysis->debugName;
     }
   });
 }
@@ -135,6 +136,8 @@ LogicalResult DataFlowSolver::initializeAndRun(Operation *top) {
   // Run the analysis until fixpoint.
   // Iterate until all states are in some initialized state and the worklist
   // is exhausted.
+  DATAFLOW_DEBUG(LDBG() << "Initialize child analyses successfully, start run "
+                           "the analysis until fixpoint");
   while (!worklist.empty()) {
     auto [point, analysis] = worklist.front();
     worklist.pop();

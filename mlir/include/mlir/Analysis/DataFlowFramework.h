@@ -707,6 +707,8 @@ private:
 
   /// Allow the data-flow solver to access the internals of this class.
   friend class DataFlowSolver;
+  // Allow the AnalysisState to access the internals of this class.
+  friend class AnalysisState;
 };
 
 template <typename AnalysisT, typename... Args>
