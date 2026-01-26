@@ -339,6 +339,44 @@ AliasResult LocalAliasAnalysis::aliasImpl(Value lhs, Value rhs) {
     return AliasResult::MustAlias;
   }
 
+  // If both the lhs and rhs are function arguments, we perform interprocedural
+  // analysis.
+  if (isa<BlockArgument>(lhs) && isa<BlockArgument>(rhs) &&
+      lhs.getParentRegion() && lhs.getParentRegion() == rhs.getParentRegion() &&
+      isa<FunctionOpInterface>(lhs.getParentRegion()->getParentOp())) {
+    BlockArgument lhsArg = dyn_cast<BlockArgument>(lhs);
+    BlockArgument rhsArg = dyn_cast<BlockArgument>(rhs);
+    FunctionOpInterface function =
+        cast<FunctionOpInterface>(lhs.getParentRegion()->getParentOp());
+    // There are unknown function calls, so we cannot perform the analysis, we
+    // assume the result is MayAlias.
+    if (!function.isPrivate())
+      return AliasResult::MayAlias;
+
+    size_t mustAlias = 0, mayAlias = 0, noAlias = 0;
+    if (std::optional<SymbolTable::UseRange> uses =
+            function.getSymbolUses(function->getParentOfType<ModuleOp>())) {
+      for (auto use : *uses) {
+        Operation *user = use.getUser();
+        AliasResult userResult =
+            aliasImpl(user->getOperand(lhsArg.getArgNumber()),
+                      user->getOperand(rhsArg.getArgNumber()));
+        if (userResult.isNo())
+          ++noAlias;
+        else if (userResult.isMay())
+          ++mayAlias;
+        else if (userResult.isMust())
+          ++mustAlias;
+      }
+    }
+    if (mayAlias || (noAlias && mustAlias))
+      return AliasResult::MayAlias;
+    else if (noAlias)
+      return AliasResult::NoAlias;
+    else if (mustAlias)
+      return AliasResult::MustAlias;
+  }
+
   Operation *lhsAllocScope = nullptr, *rhsAllocScope = nullptr;
   std::optional<MemoryEffects::EffectInstance> lhsAlloc, rhsAlloc;
 
