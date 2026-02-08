@@ -101,13 +101,17 @@ private:
 
   /// Attempt to eliminate a redundant operation. Returns success if the
   /// operation was marked for removal, failure otherwise.
-  LogicalResult simplifyOperation(ScopedMapTy &knownValues, Operation *op,
+  LogicalResult simplifyOperation(ScopedMapTy &knownValues,
+                                  ScopedMapTy &knownPureOps, Operation *op,
                                   bool hasSSADominance);
-  void simplifyBlock(ScopedMapTy &knownValues, Block *bb, bool hasSSADominance);
-  void simplifyRegion(ScopedMapTy &knownValues, Region &region);
+  void simplifyBlock(ScopedMapTy &knownValues, ScopedMapTy &knownPureOps,
+                     Block *bb, bool hasSSADominance);
+  void simplifyRegion(ScopedMapTy &knownValues, ScopedMapTy &knownPureOps,
+                      Region &region);
 
   void replaceUsesAndDelete(ScopedMapTy &knownValues, Operation *op,
                             Operation *existing, bool hasSSADominance);
+  LogicalResult hostPureOp(Operation *existing, Operation *op);
 
   /// Check if there is side-effecting operations other than the given effect
   /// between the two operations.
@@ -127,6 +131,32 @@ private:
 };
 } // namespace
 
+LogicalResult CSEDriver::hostPureOp(Operation *existing, Operation *op) {
+  Block *ancestorBlock =
+      domInfo->findNearestCommonDominator(existing->getBlock(), op->getBlock());
+  if (!ancestorBlock)
+    return failure();
+
+  Operation *insertPoint = nullptr;
+  for (Value operand : op->getOperands()) {
+    if (domInfo->properlyDominates(operand, &ancestorBlock->front()))
+      continue;
+    if (!insertPoint) {
+      insertPoint = operand.getDefiningOp();
+    } else {
+      insertPoint = domInfo->dominates(insertPoint, operand.getDefiningOp())
+                        ? operand.getDefiningOp()
+                        : insertPoint;
+    }
+  }
+  if (!insertPoint) {
+    rewriter.moveOpBefore(existing, ancestorBlock, ancestorBlock->begin());
+  } else {
+    rewriter.moveOpAfter(existing, insertPoint);
+  }
+  return success();
+}
+
 void CSEDriver::replaceUsesAndDelete(ScopedMapTy &knownValues, Operation *op,
                                      Operation *existing,
                                      bool hasSSADominance) {
@@ -141,6 +171,10 @@ void CSEDriver::replaceUsesAndDelete(ScopedMapTy &knownValues, Operation *op,
       rewriteListener->notifyOperationReplaced(op, existing);
     // Replace all uses, but do not remove the operation yet. This does not
     // notify the listener because the original op is not erased.
+    if (!domInfo->properlyDominates(existing, op)) {
+      if (failed(hostPureOp(existing, op)))
+        return;
+    }
     rewriter.replaceAllUsesWith(op->getResults(), existing->getResults());
     opsToErase.push_back(op);
   } else {
@@ -155,6 +189,10 @@ void CSEDriver::replaceUsesAndDelete(ScopedMapTy &knownValues, Operation *op,
         if (all_of(v.getUses(), wasVisited))
           rewriteListener->notifyOperationReplaced(op, existing);
 
+    if (!domInfo->properlyDominates(existing, op)) {
+      if (failed(hostPureOp(existing, op)))
+        return;
+    }
     // Replace all uses, but do not remove the operation yet. This does not
     // notify the listener because the original op is not erased.
     rewriter.replaceUsesWithIf(op->getResults(), existing->getResults(),
@@ -222,6 +260,7 @@ bool CSEDriver::hasOtherSideEffectingOpInBetween(Operation *fromOp,
 
 /// Attempt to eliminate a redundant operation.
 LogicalResult CSEDriver::simplifyOperation(ScopedMapTy &knownValues,
+                                           ScopedMapTy &knownPureOps,
                                            Operation *op,
                                            bool hasSSADominance) {
   // Don't simplify terminator operations.
@@ -261,7 +300,21 @@ LogicalResult CSEDriver::simplifyOperation(ScopedMapTy &knownValues,
         return success();
       }
     }
-    knownValues.insert(op, op);
+    if (auto *existing = knownPureOps.lookup(op)) {
+      if (existing->getBlock() == op->getBlock() &&
+          !hasOtherSideEffectingOpInBetween(existing, op)) {
+        // The operation that can be deleted has been reach with no
+        // side-effecting operations in between the existing operation and
+        // this one so we can remove the duplicate.
+        replaceUsesAndDelete(knownPureOps, op, existing, hasSSADominance);
+        return success();
+      }
+    }
+
+    if (mlir::isPure(op))
+      knownPureOps.insert(op, op);
+    else
+      knownValues.insert(op, op);
     return failure();
   }
 
@@ -272,12 +325,23 @@ LogicalResult CSEDriver::simplifyOperation(ScopedMapTy &knownValues,
     return success();
   }
 
-  // Otherwise, we add this operation to the known values map.
-  knownValues.insert(op, op);
+  if (auto *existing = knownPureOps.lookup(op)) {
+    replaceUsesAndDelete(knownPureOps, op, existing, hasSSADominance);
+    ++numCSE;
+    return success();
+  }
+
+  if (mlir::isPure(op)) {
+    knownPureOps.insert(op, op);
+  } else {
+    // Otherwise, we add this operation to the known values map.
+    knownValues.insert(op, op);
+  }
   return failure();
 }
 
-void CSEDriver::simplifyBlock(ScopedMapTy &knownValues, Block *bb,
+void CSEDriver::simplifyBlock(ScopedMapTy &knownValues,
+                              ScopedMapTy &knownPureOps, Block *bb,
                               bool hasSSADominance) {
   for (auto &op : *bb) {
     // Most operations don't have regions, so fast path that case.
@@ -287,24 +351,29 @@ void CSEDriver::simplifyBlock(ScopedMapTy &knownValues, Block *bb,
       // implicit captures in explicit capture only regions.
       if (op.mightHaveTrait<OpTrait::IsIsolatedFromAbove>()) {
         ScopedMapTy nestedKnownValues;
+        ScopedMapTy nestedKnownPureOps;
+        ScopedMapTy::ScopeTy scope(nestedKnownValues);
+        ScopedMapTy::ScopeTy pureScope(nestedKnownPureOps);
         for (auto &region : op.getRegions())
-          simplifyRegion(nestedKnownValues, region);
+          simplifyRegion(nestedKnownValues, nestedKnownPureOps, region);
       } else {
         // Otherwise, process nested regions normally.
         for (auto &region : op.getRegions())
-          simplifyRegion(knownValues, region);
+          simplifyRegion(knownValues, knownPureOps, region);
       }
     }
 
     // If the operation is simplified, we don't process any held regions.
-    if (succeeded(simplifyOperation(knownValues, &op, hasSSADominance)))
+    if (succeeded(
+            simplifyOperation(knownValues, knownPureOps, &op, hasSSADominance)))
       continue;
   }
   // Clear the MemoryEffects cache since its usage is by block only.
   memEffectsCache.clear();
 }
 
-void CSEDriver::simplifyRegion(ScopedMapTy &knownValues, Region &region) {
+void CSEDriver::simplifyRegion(ScopedMapTy &knownValues,
+                               ScopedMapTy &knownPureOps, Region &region) {
   // If the region is empty there is nothing to do.
   if (region.empty())
     return;
@@ -314,7 +383,8 @@ void CSEDriver::simplifyRegion(ScopedMapTy &knownValues, Region &region) {
   // If the region only contains one block, then simplify it directly.
   if (region.hasOneBlock()) {
     ScopedMapTy::ScopeTy scope(knownValues);
-    simplifyBlock(knownValues, &region.front(), hasSSADominance);
+    ScopedMapTy::ScopeTy pureScope(knownPureOps);
+    simplifyBlock(knownValues, knownPureOps, &region.front(), hasSSADominance);
     return;
   }
 
@@ -342,7 +412,7 @@ void CSEDriver::simplifyRegion(ScopedMapTy &knownValues, Region &region) {
     // Check to see if we need to process this node.
     if (!currentNode->processed) {
       currentNode->processed = true;
-      simplifyBlock(knownValues, currentNode->node->getBlock(),
+      simplifyBlock(knownValues, knownPureOps, currentNode->node->getBlock(),
                     hasSSADominance);
     }
 
@@ -362,8 +432,13 @@ void CSEDriver::simplifyRegion(ScopedMapTy &knownValues, Region &region) {
 void CSEDriver::simplify(Operation *op, bool *changed) {
   /// Simplify all regions.
   ScopedMapTy knownValues;
-  for (auto &region : op->getRegions())
-    simplifyRegion(knownValues, region);
+  ScopedMapTy knownPureOps;
+  {
+    ScopedMapTy::ScopeTy scope(knownPureOps);
+    for (auto &region : op->getRegions()) {
+      simplifyRegion(knownValues, knownPureOps, region);
+    }
+  }
 
   /// Erase any operations that were marked as dead during simplification.
   for (auto *op : opsToErase)

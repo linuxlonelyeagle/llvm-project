@@ -216,6 +216,7 @@ func.func @up_propagate() -> i32 {
 func.func @up_propagate_region() -> i32 {
   // CHECK-NEXT: {{.*}} "foo.region"
   %0 = "foo.region"() ({
+    // CHECK-NEXT:  %[[VAR_c1_i32:[0-9a-zA-Z_]+]] = arith.constant 0 : i32
     // CHECK-NEXT:  %[[VAR_c0_i32:[0-9a-zA-Z_]+]] = arith.constant 0 : i32
     // CHECK-NEXT: %[[VAR_true:[0-9a-zA-Z_]+]] = arith.constant true
     // CHECK-NEXT: cf.cond_br
@@ -225,14 +226,12 @@ func.func @up_propagate_region() -> i32 {
     cf.cond_br %true, ^bb1, ^bb2(%1 : i32)
 
   ^bb1: // CHECK: ^bb1:
-    // CHECK-NEXT: %[[VAR_c1_i32:[0-9a-zA-Z_]+]] = arith.constant 1 : i32
     // CHECK-NEXT: cf.br
 
     %c1_i32 = arith.constant 1 : i32
     cf.br ^bb2(%c1_i32 : i32)
 
   ^bb2(%arg : i32): // CHECK: ^bb2(%[[VAR_1:.*]]: i32):
-    // CHECK-NEXT: %[[VAR_c1_i32_0:[0-9a-zA-Z_]+]] = arith.constant 1 : i32
     // CHECK-NEXT: %[[VAR_2:[0-9a-zA-Z_]+]] = arith.addi %[[VAR_1]], %[[VAR_c1_i32_0]] : i32
     // CHECK-NEXT: "foo.yield"(%[[VAR_2]]) : (i32) -> ()
 
@@ -500,8 +499,8 @@ func.func @cse_multiple_regions(%c: i1, %t: tensor<5xf32>) -> (tensor<5xf32>, te
   return %r1, %r2 : tensor<5xf32>, tensor<5xf32>
 }
 // CHECK-LABEL: func @cse_multiple_regions
+//       CHECK:    tensor.empty
 //       CHECK:   %[[if:.*]] = scf.if {{.*}} {
-//       CHECK:     tensor.empty
 //       CHECK:     scf.yield
 //       CHECK:   } else {
 //       CHECK:     scf.yield
