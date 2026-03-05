@@ -24,6 +24,9 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/Allocator.h"
+#include "llvm/Support/DebugLog.h"
+
+#define DEBUG_TYPE "reduction-tree"
 
 namespace mlir {
 #define GEN_PASS_DEF_REDUCTIONTREEPASS
@@ -68,6 +71,8 @@ static void applyPatterns(Region &region,
 
   if (eraseOpNotInRange)
     for (Operation *op : opsNotInRange) {
+      if (op->hasTrait<mlir::OpTrait::IsTerminator>())
+        continue;
       op->dropAllUses();
       op->erase();
     }
@@ -84,6 +89,7 @@ template <typename IteratorType>
 static LogicalResult findOptimal(ModuleOp module, Region &region,
                                  const FrozenRewritePatternSet &patterns,
                                  const Tester &test, bool eraseOpNotInRange) {
+  LDBG() << "entry findOptimal";
   std::pair<Tester::Interestingness, size_t> initStatus =
       test.isInteresting(module);
   // While exploring the reduction tree, we always branch from an interesting
@@ -106,12 +112,18 @@ static LogicalResult findOptimal(ModuleOp module, Region &region,
   ReductionNode *smallestNode = root;
   IteratorType iter(root);
 
+  LDBG() << "start find patch";
   while (iter != IteratorType::end()) {
     ReductionNode &currentNode = *iter;
     Region &curRegion = currentNode.getRegion();
-
+    LDBG() << "curRegion:\n" << curRegion;
+    LDBG() << "range size: " << currentNode.getRanges().size();
+    LLVM_DEBUG(for (auto range : currentNode.getRanges()) {
+      LDBG() << "range: " << range.first << " " << range.second << "\n";
+    });
     applyPatterns(curRegion, patterns, currentNode.getRanges(),
                   eraseOpNotInRange);
+    LDBG() << "applyPatterns:\n" << curRegion;
     currentNode.update(test.isInteresting(currentNode.getModule()));
 
     if (currentNode.isInteresting() == Tester::Interestingness::True &&
@@ -120,7 +132,9 @@ static LogicalResult findOptimal(ModuleOp module, Region &region,
 
     ++iter;
   }
-
+  LDBG() << "find patch success";
+  LDBG() << "smallestNode:\n";
+  LDBG() << smallestNode->getRegion() << "\n";
   // At here, we have found an optimal path to reduce the given region. Retrieve
   // the path and apply the reducer to it.
   SmallVector<ReductionNode *> trace;
@@ -157,10 +171,14 @@ static LogicalResult findOptimal(ModuleOp module, Region &region,
   if (failed(findOptimal<IteratorType>(module, region, /*patterns=*/{}, test,
                                        /*eraseOpNotInRange=*/true)))
     return failure();
+  LDBG() << "after eraseOp:\n" << region;
   // In the second phase, we suppose that no operation is redundant, so we try
   // to rewrite the operation into simpler form.
-  return findOptimal<IteratorType>(module, region, patterns, test,
-                                   /*eraseOpNotInRange=*/false);
+  LogicalResult result =
+      findOptimal<IteratorType>(module, region, patterns, test,
+                                /*eraseOpNotInRange=*/false);
+  LDBG() << "after apply pattern:\n" << *region.getParentOp();
+  return result;
 }
 
 namespace {
@@ -203,6 +221,7 @@ public:
 
 private:
   LogicalResult reduceOp(ModuleOp module, Region &region);
+  void testOp(Operation *op, Region &region, ModuleOp module);
 
   Tester tester;
   FrozenRewritePatternSet reducerPatterns;
@@ -223,6 +242,15 @@ LogicalResult ReductionTreePass::initialize(MLIRContext *context) {
   return success();
 }
 
+void ReductionTreePass::testOp(Operation *op, Region &region, ModuleOp module) {
+  for (auto &o : region.getOps()) {
+    for (auto &region : o.getRegions())
+      testOp(&o, region, module);
+  }
+  LDBG() << "testOp reduce:" << *region.getParentOp();
+  reduceOp(module, region);
+}
+
 void ReductionTreePass::runOnOperation() {
   Operation *topOperation = getOperation();
   while (topOperation->getParentOp() != nullptr)
@@ -237,22 +265,26 @@ void ReductionTreePass::runOnOperation() {
   SmallVector<Operation *, 8> workList;
   workList.push_back(getOperation());
 
-  do {
-    Operation *op = workList.pop_back_val();
+  if (traversalModeId == TraversalMode::SinglePath) {
+    do {
+      Operation *op = workList.pop_back_val();
 
-    for (Region &region : op->getRegions())
-      if (!region.empty())
-        if (failed(reduceOp(module, region)))
-          return signalPassFailure();
+      for (Region &region : op->getRegions())
+        if (!region.empty())
+          if (failed(reduceOp(module, region)))
+            return signalPassFailure();
 
-    for (Region &region : op->getRegions())
-      for (Operation &op : region.getOps())
-        if (op.getNumRegions() != 0)
-          workList.push_back(&op);
-  } while (!workList.empty());
+      for (Region &region : op->getRegions())
+        for (Operation &op : region.getOps())
+          if (op.getNumRegions() != 0)
+            workList.push_back(&op);
+    } while (!workList.empty());
+    // testOp(topOperation, topOperation->getRegion(0), module);
+  }
 }
 
 LogicalResult ReductionTreePass::reduceOp(ModuleOp module, Region &region) {
+  LDBG() << "start reduce on:\n" << region << "\n";
   switch (traversalModeId) {
   case TraversalMode::SinglePath:
     return findOptimal<ReductionNode::iterator<TraversalMode::SinglePath>>(

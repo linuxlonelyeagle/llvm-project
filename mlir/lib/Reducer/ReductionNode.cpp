@@ -17,8 +17,11 @@
 #include "mlir/Reducer/ReductionNode.h"
 #include "mlir/IR/IRMapping.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/Support/DebugLog.h"
 
 #include <limits>
+
+#define DEBUG_TYPE "reduction-node"
 
 using namespace mlir;
 
@@ -117,6 +120,7 @@ void ReductionNode::update(std::pair<Tester::Interestingness, size_t> result) {
 
 ArrayRef<ReductionNode *>
 ReductionNode::iterator<SinglePath>::getNeighbors(ReductionNode *node) {
+  LDBG() << "getNeighbors region:\n" << node->getRegion();
   // Single Path: Traverses the smallest successful variant at each level until
   // no new successful variants can be created at that level.
   ArrayRef<ReductionNode *> variantsFromParent =
@@ -144,10 +148,12 @@ ReductionNode::iterator<SinglePath>::getNeighbors(ReductionNode *node) {
       smallest->getSize() < node->getParent()->getSize()) {
     // We got a smallest one, keep traversing from this node.
     node = smallest;
+    LDBG() << "getNeighbors find smallest neighbors";
   } else {
     // None of these variants is interesting, let the parent node to generate
     // more variants.
     node = node->getParent();
+    LDBG() << "getNeighbors parnet gen neighbors";
   }
 
   return node->generateNewVariants();
