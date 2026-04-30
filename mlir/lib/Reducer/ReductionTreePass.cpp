@@ -24,6 +24,9 @@
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Support/Allocator.h"
+#include "llvm/Support/DebugLog.h"
+
+#define DEBUG_TYPE "reduction-tree"
 
 namespace mlir {
 #define GEN_PASS_DEF_REDUCTIONTREEPASS
@@ -57,17 +60,21 @@ static void applyPatterns(Region &region,
   // pattern matching in above iteration. Besides, erase op not-in-range may end
   // up in invalid module, so `applyOpPatternsGreedily` with folding should come
   // before that transform.
-  for (Operation *op : opsInRange) {
-    // `applyOpPatternsGreedily` with folding returns whether the op is
-    // converted. Omit it because we don't have expectation this reduction will
-    // be success or not.
-    (void)applyOpPatternsGreedily(op, patterns,
-                                  GreedyRewriteConfig().setStrictness(
-                                      GreedyRewriteStrictness::ExistingOps));
+  if (!eraseOpNotInRange) {
+    for (Operation *op : opsInRange) {
+      // `applyOpPatternsGreedily` with folding returns whether the op is
+      // converted. Omit it because we don't have expectation this reduction
+      // will be success or not.
+      (void)applyOpPatternsGreedily(op, patterns,
+                                    GreedyRewriteConfig().setStrictness(
+                                        GreedyRewriteStrictness::ExistingOps));
+    }
   }
 
   if (eraseOpNotInRange)
     for (Operation *op : opsNotInRange) {
+      if (op->hasTrait<OpTrait::IsTerminator>())
+        continue;
       op->dropAllUses();
       op->erase();
     }
@@ -109,15 +116,16 @@ static LogicalResult findOptimal(ModuleOp module, Region &region,
   while (iter != IteratorType::end()) {
     ReductionNode &currentNode = *iter;
     Region &curRegion = currentNode.getRegion();
-
+    LDBG() << "curRegion: \n" << curRegion;
+    auto parentOp = curRegion.getParentOp();
     applyPatterns(curRegion, patterns, currentNode.getRanges(),
                   eraseOpNotInRange);
+    LDBG() << "parent op\n" << *parentOp; 
     currentNode.update(test.isInteresting(currentNode.getModule()));
 
     if (currentNode.isInteresting() == Tester::Interestingness::True &&
         currentNode.getSize() < smallestNode->getSize())
       smallestNode = &currentNode;
-
     ++iter;
   }
 
@@ -205,6 +213,7 @@ static LogicalResult findOptimal(ModuleOp module, Region &region,
   // to rewrite the operation into simpler form.
   return findOptimal<IteratorType>(module, region, patterns, test,
                                    /*eraseOpNotInRange=*/false);
+  return success();
 }
 
 namespace {

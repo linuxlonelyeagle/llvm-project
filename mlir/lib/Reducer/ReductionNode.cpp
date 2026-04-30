@@ -38,6 +38,7 @@ LogicalResult ReductionNode::initialize(ModuleOp parentModule,
                                         Region &targetRegion) {
   // Use the mapper help us find the corresponding region after module clone.
   IRMapping mapper;
+  llvm::outs() << "@@:\n" << parentModule << "\n";
   module = cast<ModuleOp>(parentModule->clone(mapper));
   // Use the first block of targetRegion to locate the cloned region.
   Block *block = mapper.lookup(&*targetRegion.begin());
