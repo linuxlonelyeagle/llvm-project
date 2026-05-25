@@ -43,6 +43,13 @@ void getTripCountMapAndOperands(AffineForOp forOp, AffineMap *map,
 /// constant trip count in non-trivial cases.
 std::optional<uint64_t> getConstantTripCount(AffineForOp forOp);
 
+/// Computes the constant lower and upper bounds of the given affine loop's
+/// trip count using the Presburger-based `ValueBoundsConstraintSet`
+/// infrastructure. Returns the trip count bounds only if both the lower and
+/// upper bounds are  successfully computed; otherwise, returns std::nullopt.
+std::optional<std::pair<uint64_t, uint64_t>>
+computeLoopTripCountConstantBounds(AffineForOp forOp);
+
 /// Returns the greatest known integral divisor of the trip count. Affine
 /// expression analysis is used (indirectly through getTripCount), and
 /// this method is thus able to determine non-trivial divisors.
