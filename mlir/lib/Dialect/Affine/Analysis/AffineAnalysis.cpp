@@ -470,7 +470,6 @@ LogicalResult MemRefAccess::getAccessRelation(IntegerRelation &rel) const {
   // Merge and align domain ids of `rel` with ids of `domain`. Since the domain
   // of the access map is a subset of the domain of access, the domain ids of
   // `rel` are guranteed to be a subset of ids of `domain`.
-  unsigned inserts = 0;
   for (unsigned i = 0, e = domain.getNumDimVars(); i < e; ++i) {
     const Identifier domainIdi = Identifier(domain.getValue(i));
     const Identifier *findBegin = rel.getIds(VarKind::SetDim).begin() + i;
@@ -479,7 +478,6 @@ LogicalResult MemRefAccess::getAccessRelation(IntegerRelation &rel) const {
     if (itr != findEnd) {
       rel.swapVar(i, i + std::distance(findBegin, itr));
     } else {
-      ++inserts;
       rel.insertVar(VarKind::SetDim, i);
       rel.setId(VarKind::SetDim, i, domainIdi);
     }
@@ -497,7 +495,7 @@ LogicalResult MemRefAccess::getAccessRelation(IntegerRelation &rel) const {
   domainRel.mergeLocalVars(rel);
   rel.append(domainRel);
 
-  rel.convertVarKind(VarKind::SetDim, 0, accessValueMap.getNumDims() + inserts,
+  rel.convertVarKind(VarKind::SetDim, 0, domain.getNumDimVars(),
                      VarKind::Domain);
 
   return success();
