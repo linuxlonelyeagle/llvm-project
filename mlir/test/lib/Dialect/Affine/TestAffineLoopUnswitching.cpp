@@ -50,11 +50,17 @@ void TestAffineLoopUnswitching::runOnOperation() {
   Operation *op = getOperation();
   unsigned i = 0;
   do {
-    auto walkFn = [](AffineIfOp op) {
-      return succeeded(hoistAffineIfOp(op)) ? WalkResult::interrupt()
-                                            : WalkResult::advance();
+    // Set to true if the op was erased/folded. Used to interrupt the walk and
+    // prevent iterator invalidation (dangling pointers).
+    bool folded = false;
+    auto walkFn = [&](AffineIfOp op) {
+      LogicalResult result = hoistAffineIfOp(op, &folded);
+      if (succeeded(result) || folded) {
+        return WalkResult::interrupt();
+      }
+      return WalkResult::advance();
     };
-    if (op->walk(walkFn).wasInterrupted())
+    if (op->walk(walkFn).wasInterrupted() && !folded)
       break;
   } while (++i < kMaxIterations);
 }
